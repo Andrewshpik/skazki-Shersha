@@ -256,6 +256,7 @@
             box-shadow: var(--shadow);
             max-height: 80vh;
             overflow-y: auto;
+            text-align: center; 
         }
 
         .modal-content h2 {
@@ -273,6 +274,7 @@
             color: var(--text-color);
             font-family: inherit;
             box-sizing: border-box;
+            text-align: left; 
         }
 
         .modal-content textarea {
@@ -285,6 +287,7 @@
             font-size: 0.8rem;
             margin-bottom: 15px;
             display: none;
+            text-align: left;
         }
 
         .modal-buttons {
@@ -447,23 +450,18 @@
     <!-- КОНТЕЙНЕР ДЛЯ УВЕДОМЛЕНИЙ -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ОКНО ВХОДА (Регистрация) -->
+    <!-- ОКНО ВХОДА (Регистрация через Telegram) -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-content">
             <h2>👑 Добро пожаловать в Сказки Шерша!</h2>
-            <p>Заполни свои данные, чтобы Шерш знал, кто ты.</p>
+            <p>Войди через Telegram, чтобы Шерш знал, кто ты.</p>
             
-            <label style="font-size: 0.9rem; color: var(--text-color);">Твое настоящее имя:</label>
-            <input type="text" id="regNameInput" placeholder="Например: Андрей">
-            <div class="field-error" id="nameError">Это имя уже занято другим пользователем!</div>
-
-            <label style="font-size: 0.9rem; color: var(--text-color);">Твой никнейм (начинается с @):</label>
-            <input type="text" id="regNickInput" placeholder="@shersh_fan">
-            <div class="field-error" id="nickError">Этот ник уже занят! Придумай другой.</div>
-
-            <div class="modal-buttons">
-                <button class="btn" id="saveNameBtn">Войти на сайт</button>
-            </div>
+            <!-- КНОПКА ВХОДА ЧЕРЕЗ TELEGRAM -->
+            <script async src="https://telegram.org/js/telegram-widget.js?22" 
+                    data-telegram-login="shersh_auth_bot" 
+                    data-size="large" 
+                    data-onauth="onTelegramAuth(user)" 
+                    data-request-access="write"></script>
         </div>
     </div>
 
@@ -472,15 +470,15 @@
         <div class="modal-content">
             <h2>Редактировать профиль</h2>
             
-            <label style="font-size: 0.9rem; color: var(--text-color);">Имя:</label>
+            <label style="font-size: 0.9rem; color: var(--text-color); text-align: left; display: block;">Имя:</label>
             <input type="text" id="editNameInput" placeholder="Твое имя">
             <div class="field-error" id="editNameError">Это имя уже занято!</div>
 
-            <label style="font-size: 0.9rem; color: var(--text-color);">Никнейм:</label>
+            <label style="font-size: 0.9rem; color: var(--text-color); text-align: left; display: block;">Никнейм:</label>
             <input type="text" id="editNicknameInput" placeholder="@nickname">
             <div class="field-error" id="editNickError">Этот ник уже занят!</div>
 
-            <label style="font-size: 0.9rem; color: var(--text-color);">О себе:</label>
+            <label style="font-size: 0.9rem; color: var(--text-color); text-align: left; display: block;">О себе:</label>
             <textarea id="editBioInput" placeholder="Расскажи о себе..."></textarea>
             
             <div class="modal-buttons">
@@ -567,6 +565,37 @@
     </div>
 
     <script>
+        // --- ФУНКЦИЯ АВТОРИЗАЦИИ ЧЕРЕЗ TELEGRAM ---
+        function onTelegramAuth(user) {
+            console.log("Данные от Telegram:", user);
+            
+            // ⚠️ ВСТАВЬ СЮДА СВОЙ АДРЕС ОТ NETRUN (без https://)
+            fetch('https://shersh-auth.de1.netrun.io/auth/telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    userData.name = data.user;
+                    userData.nickname = '@' + (user.username || 'user');
+                    localStorage.setItem('shersh_user', JSON.stringify(userData));
+                    
+                    loginModal.style.display = 'none';
+                    updateHeaderUI();
+                    showToast(`Добро пожаловать, ${data.user}!`);
+                    location.reload(); 
+                } else {
+                    showToast('Ошибка авторизации', true);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showToast('Сервер не отвечает', true);
+            });
+        }
+
         // --- ОРАНЖЕВЫЕ ИСКРЫ ---
         document.addEventListener('mousemove', (e) => {
             if (Math.random() > 0.4) return;
@@ -632,41 +661,6 @@
                 updateHeaderUI();
             }
         }
-
-        document.getElementById('regNameInput').addEventListener('input', () => document.getElementById('nameError').style.display = 'none');
-        document.getElementById('regNickInput').addEventListener('input', () => document.getElementById('nickError').style.display = 'none');
-
-        document.getElementById('saveNameBtn').addEventListener('click', () => {
-            const nameInput = document.getElementById('regNameInput');
-            const nickInput = document.getElementById('regNickInput');
-            let name = nameInput.value.trim();
-            let nick = nickInput.value.trim();
-
-            if (nick && !nick.startsWith('@')) nick = '@' + nick;
-            if (!name) { nameInput.focus(); return; }
-            if (!nick) { nickInput.focus(); return; }
-
-            let hasError = false;
-
-            if (usersDB.some(u => u.name.toLowerCase() === name.toLowerCase())) {
-                document.getElementById('nameError').style.display = 'block';
-                hasError = true;
-            }
-            if (usersDB.some(u => u.nickname.toLowerCase() === nick.toLowerCase())) {
-                document.getElementById('nickError').style.display = 'block';
-                hasError = true;
-            }
-
-            if (!hasError) {
-                userData.name = name;
-                userData.nickname = nick;
-                usersDB.push({ name: name, nickname: nick });
-                saveUsersDB();
-                saveUserData();
-                loginModal.style.display = 'none';
-                showToast(`Добро пожаловать, ${name}!`);
-            }
-        });
 
         function saveUserData() {
             localStorage.setItem('shersh_user', JSON.stringify(userData));
