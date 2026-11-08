@@ -40,7 +40,7 @@
             cursor: url('shersh_cursor.png') 16 16, auto; 
         }
 
-        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon {
+        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag {
             cursor: url('shersh_cursor.png') 16 16, pointer !important;
         }
 
@@ -221,6 +221,7 @@
             z-index: 1000;
             justify-content: center;
             align-items: center;
+            backdrop-filter: blur(4px); /* Легкое размытие фона */
         }
 
         .modal-content {
@@ -233,6 +234,12 @@
             max-height: 85vh;
             overflow-y: auto;
             text-align: left; 
+            animation: modalFadeIn 0.3s ease-out; /* Плавное появление */
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .modal-content h2 { 
@@ -243,10 +250,23 @@
             text-align: center;
         }
 
+        .input-wrapper {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            opacity: 0.5;
+        }
+
         .modal-content input, .modal-content textarea {
             width: 100%;
-            padding: 15px;
-            margin-bottom: 15px;
+            padding: 15px 15px 15px 45px; /* Отступ слева для иконки */
             border: 2px solid var(--border-color);
             border-radius: 10px;
             background-color: var(--input-bg);
@@ -254,18 +274,52 @@
             font-family: inherit;
             font-size: 1rem;
             box-sizing: border-box;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .modal-content textarea {
+            padding-top: 15px;
+            resize: vertical;
+            min-height: 150px;
+            line-height: 1.5;
         }
 
         .modal-content input:focus, .modal-content textarea:focus {
             outline: none;
             border-color: var(--gold-accent);
+            box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2);
         }
 
-        .modal-content textarea {
-            resize: vertical;
-            min-height: 150px;
-            line-height: 1.5;
+        .word-count {
+            text-align: right;
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: -10px;
+            margin-bottom: 15px;
+        }
+
+        .inspiration-hints {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .hint-tag {
+            background-color: var(--comment-bg);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            color: #888;
+            transition: all 0.2s;
+            border: 1px solid var(--border-color);
+        }
+
+        .hint-tag:hover {
+            background-color: var(--gold-accent);
+            color: #333;
+            border-color: var(--gold-accent);
         }
 
         .modal-buttons { 
@@ -449,8 +503,24 @@
     <div class="modal-overlay" id="postModal">
         <div class="modal-content">
             <h2 id="postModalTitle">Новая история</h2>
-            <input type="text" id="postTitle" placeholder="Придумай цепляющий заголовок...">
-            <textarea id="postText" placeholder="Расскажи свою историю здесь. Не бойся, Шерш не осудит..."></textarea>
+            
+            <div class="inspiration-hints">
+                <span class="hint-tag" onclick="insertHint('Сказка на ночь: ')">📖 Сказка</span>
+                <span class="hint-tag" onclick="insertHint('История из жизни: ')">🌟 Из жизни</span>
+                <span class="hint-tag" onclick="insertHint('Закулисье театра: ')">🎭 Театр</span>
+            </div>
+
+            <div class="input-wrapper">
+                <span class="input-icon">📝</span>
+                <input type="text" id="postTitle" placeholder="Придумай цепляющий заголовок...">
+            </div>
+            
+            <div class="input-wrapper">
+                <span class="input-icon" style="top: 20px;">✍️</span>
+                <textarea id="postText" placeholder="Расскажи свою историю здесь. Не бойся, Шерш не осудит..." oninput="updateWordCount()"></textarea>
+            </div>
+            <div class="word-count" id="wordCount">Слов: 0</div>
+
             <div class="modal-buttons">
                 <button class="btn btn-cancel" id="cancelBtn">Отмена</button>
                 <button class="btn" id="submitPostBtn">Опубликовать!</button>
@@ -539,6 +609,20 @@
                 toast.style.animation = 'slideIn 0.3s ease-in reverse forwards';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
+        }
+
+        // --- ПОДСКАЗКИ И СЧЕТЧИК ---
+        function insertHint(text) {
+            const textarea = document.getElementById('postText');
+            textarea.value = text + textarea.value;
+            textarea.focus();
+            updateWordCount();
+        }
+
+        function updateWordCount() {
+            const text = document.getElementById('postText').value.trim();
+            const wordCount = text ? text.split(/\s+/).length : 0;
+            document.getElementById('wordCount').textContent = `Слов: ${wordCount}`;
         }
 
         // --- БАЗА ПОЛЬЗОВАТЕЛЕЙ ---
@@ -818,6 +902,7 @@
             document.getElementById('postTitle').value = post.title;
             document.getElementById('postText').value = post.text;
             document.getElementById('submitPostBtn').textContent = 'Сохранить';
+            updateWordCount();
             postModal.style.display = 'flex';
         };
 
@@ -837,6 +922,7 @@
             document.getElementById('postTitle').value = '';
             document.getElementById('postText').value = '';
             document.getElementById('submitPostBtn').textContent = 'Опубликовать!';
+            updateWordCount();
             postModal.style.display = 'flex';
             document.getElementById('postTitle').focus();
         });
