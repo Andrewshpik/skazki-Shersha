@@ -40,7 +40,7 @@
             cursor: url('shersh_cursor.png') 16 16, auto; 
         }
 
-        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon {
+        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon {
             cursor: url('shersh_cursor.png') 16 16, pointer !important;
         }
 
@@ -163,12 +163,39 @@
             margin-bottom: 20px;
             box-shadow: var(--shadow);
             border: 1px solid var(--border-color);
+            position: relative; /* Для кнопок управления */
         }
 
-        .post-card h2 { margin-top: 0; margin-bottom: 10px; font-size: 1.4rem; }
+        .post-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .post-card h2 { margin: 0; font-size: 1.4rem; flex-grow: 1; }
         .post-meta { font-size: 0.9em; color: #888; margin-bottom: 15px; display: flex; gap: 10px; }
         .post-content { line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; }
         .post-actions { display: flex; gap: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; }
+
+        .post-controls {
+            display: flex;
+            gap: 10px;
+            margin-left: 15px;
+        }
+
+        .edit-post-btn, .delete-post-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            opacity: 0.6;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .edit-post-btn:hover, .delete-post-btn:hover {
+            opacity: 1;
+            transform: scale(1.2);
+        }
 
         .action-btn {
             background: none;
@@ -294,8 +321,6 @@
             <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
 
             <p style="margin-bottom: 10px;">Или войди через Telegram:</p>
-            
-            <!-- КНОПКА ВХОДА ЧЕРЕЗ БОТА -->
             <button class="btn" id="telegramBotBtn" style="background-color: #2AABEE; color: white; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; border-radius: 8px; padding: 12px;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
                 Войти через Telegram
@@ -375,10 +400,10 @@
         </div>
     </main>
 
-    <!-- ОКНО ДОБАВЛЕНИЯ ПОСТА -->
+    <!-- ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОСТА -->
     <div class="modal-overlay" id="postModal">
         <div class="modal-content">
-            <h2>Новая история</h2>
+            <h2 id="postModalTitle">Новая история</h2>
             <input type="text" id="postTitle" placeholder="Заголовок (О чем история?)">
             <textarea id="postText" placeholder="Текст истории..."></textarea>
             <div class="modal-buttons">
@@ -409,7 +434,6 @@
         document.getElementById('telegramBotBtn').addEventListener('click', () => {
             const code = Math.random().toString(36).substring(2, 10);
             window.open(`https://t.me/${botUsername}?start=${code}`, '_blank');
-            
             document.getElementById('waitingMsg').style.display = 'block';
 
             checkInterval = setInterval(() => {
@@ -419,11 +443,9 @@
                         if (data.status === 'ok') {
                             clearInterval(checkInterval);
                             document.getElementById('waitingMsg').style.display = 'none';
-                            
                             userData.name = data.user.first_name;
                             userData.nickname = '@' + (data.user.username || 'user');
                             localStorage.setItem('shersh_user', JSON.stringify(userData));
-                            
                             loginModal.style.display = 'none';
                             updateHeaderUI();
                             showToast(`Добро пожаловать, ${data.user.first_name}!`);
@@ -434,7 +456,7 @@
             }, 2000);
         });
 
-        // --- ОРАНЖЕВЫЕ ИСКРЫ ---
+        // --- ИСКРЫ ---
         document.addEventListener('mousemove', (e) => {
             if (Math.random() > 0.4) return;
             const sparkle = document.createElement('div');
@@ -461,7 +483,7 @@
             }
         });
 
-        // --- СИСТЕМА УВЕДОМЛЕНИЙ ---
+        // --- УВЕДОМЛЕНИЯ ---
         function showToast(message, isError = false) {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -491,6 +513,8 @@
 
         const loginModal = document.getElementById('loginModal');
         const editProfileModal = document.getElementById('editProfileModal');
+        const postModal = document.getElementById('postModal');
+        let editingPostId = null; // ID поста, который редактируем
 
         function checkAuth() {
             if (!userData.name) {
@@ -514,7 +538,6 @@
             if (!nick) { nickInput.focus(); return; }
 
             let hasError = false;
-
             if (usersDB.some(u => u.name.toLowerCase() === name.toLowerCase())) {
                 document.getElementById('nameError').style.display = 'block';
                 hasError = true;
@@ -570,11 +593,8 @@
                 avatarPlaceholder.style.display = 'flex';
             }
 
-            // ИСПРАВЛЕНИЕ: Считаем только те посты, которые написал сам пользователь
             let myPosts = posts.filter(p => p.author === userData.name);
             let totalLikes = myPosts.reduce((sum, p) => sum + p.likes, 0);
-            
-            // Если это новый пользователь и у него нет постов, ставим 0
             document.getElementById('statPosts').textContent = myPosts.length;
             document.getElementById('statLikes').textContent = totalLikes;
         }
@@ -704,9 +724,21 @@
                 postElement.className = 'post-card';
                 const dateStr = formatDate(post.date);
                 const commentCount = post.comments ? post.comments.length : 0;
+                
+                // Показываем кнопки управления только автору
+                const isAuthor = userData.name === post.author;
+                const controlsHTML = isAuthor ? `
+                    <div class="post-controls">
+                        <button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать">✏️</button>
+                        <button class="delete-post-btn" onclick="deletePost(${post.id})" title="Удалить">🗑️</button>
+                    </div>
+                ` : '';
 
                 postElement.innerHTML = `
-                    <h2>${post.title}</h2>
+                    <div class="post-header-row">
+                        <h2>${post.title}</h2>
+                        ${controlsHTML}
+                    </div>
                     <div class="post-meta">
                         <span>Автор: ${post.author}</span>
                         <span>•</span>
@@ -733,12 +765,36 @@
             renderPosts();
         };
 
-        const postModal = document.getElementById('postModal');
+        // --- РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ ---
+        window.editPost = function(id) {
+            const post = posts.find(p => p.id === id);
+            if (!post) return;
+            
+            editingPostId = id;
+            document.getElementById('postModalTitle').textContent = 'Редактировать историю';
+            document.getElementById('postTitle').value = post.title;
+            document.getElementById('postText').value = post.text;
+            document.getElementById('submitPostBtn').textContent = 'Сохранить';
+            postModal.style.display = 'flex';
+        };
+
+        window.deletePost = function(id) {
+            if (confirm('Точно удалить эту историю?')) {
+                posts = posts.filter(p => p.id !== id);
+                saveData();
+                renderPosts();
+                showToast('История удалена');
+            }
+        };
+
         document.getElementById('addPostBtn').addEventListener('click', () => {
             if(!userData.name) return;
-            postModal.style.display = 'flex';
+            editingPostId = null;
+            document.getElementById('postModalTitle').textContent = 'Новая история';
             document.getElementById('postTitle').value = '';
             document.getElementById('postText').value = '';
+            document.getElementById('submitPostBtn').textContent = 'Опубликовать!';
+            postModal.style.display = 'flex';
             document.getElementById('postTitle').focus();
         });
 
@@ -747,21 +803,36 @@
         document.getElementById('submitPostBtn').addEventListener('click', () => {
             const title = document.getElementById('postTitle').value.trim();
             const text = document.getElementById('postText').value.trim();
+            
             if (!title || !text) {
                 showToast('Заполни заголовок и текст!', true);
                 return;
             }
-            const newPost = {
-                id: Date.now(), title: title, author: userData.name, date: new Date().toISOString(),
-                text: text, likes: 0, isLiked: false, comments: []
-            };
-            posts.unshift(newPost);
+
+            if (editingPostId) {
+                // Режим редактирования
+                const post = posts.find(p => p.id === editingPostId);
+                if (post) {
+                    post.title = title;
+                    post.text = text;
+                }
+                showToast('История обновлена!');
+            } else {
+                // Режим создания
+                const newPost = {
+                    id: Date.now(), title: title, author: userData.name, date: new Date().toISOString(),
+                    text: text, likes: 0, isLiked: false, comments: []
+                };
+                posts.unshift(newPost);
+                showToast('История опубликована!');
+            }
+            
             saveData();
             renderPosts();
             postModal.style.display = 'none';
-            showToast('История опубликована!');
         });
 
+        // --- КОММЕНТАРИИ ---
         const commentsModal = document.getElementById('commentsModal');
         const commentsList = document.getElementById('commentsList');
         const commentInput = document.getElementById('commentInput');
