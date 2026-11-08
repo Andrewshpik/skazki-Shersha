@@ -418,7 +418,7 @@
 
             // Начинаем опрашивать сервер каждые 2 секунды
             checkInterval = setInterval(() => {
-                fetch(`shersh-auth.de1.netrun.io/check_auth?code=${code}`)
+                fetch(`https://shersh-auth.de1.netrun.io/check_auth?code=${code}`)
                     .then(res => res.json())
                     .then(data => {
                         if (data.status === 'ok') {
