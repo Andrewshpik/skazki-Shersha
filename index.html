@@ -403,20 +403,15 @@
 
     <script>
         // --- ВХОД ЧЕРЕЗ БОТА ---
-        const botUsername = "shersh_auth_bot"; // Юзернейм бота без @
+        const botUsername = "shersh_auth_bot"; 
         let checkInterval = null;
 
         document.getElementById('telegramBotBtn').addEventListener('click', () => {
-            // Генерируем случайный код сессии
             const code = Math.random().toString(36).substring(2, 10);
-            
-            // Открываем Telegram с этим кодом
             window.open(`https://t.me/${botUsername}?start=${code}`, '_blank');
             
-            // Показываем сообщение "Ожидаем..."
             document.getElementById('waitingMsg').style.display = 'block';
 
-            // Начинаем опрашивать сервер каждые 2 секунды
             checkInterval = setInterval(() => {
                 fetch(`https://shersh-auth.de1.netrun.io/check_auth?code=${code}`)
                     .then(res => res.json())
@@ -425,7 +420,6 @@
                             clearInterval(checkInterval);
                             document.getElementById('waitingMsg').style.display = 'none';
                             
-                            // Сохраняем пользователя и пускаем на сайт
                             userData.name = data.user.first_name;
                             userData.nickname = '@' + (data.user.username || 'user');
                             localStorage.setItem('shersh_user', JSON.stringify(userData));
@@ -436,9 +430,7 @@
                             setTimeout(() => location.reload(), 1000);
                         }
                     })
-                    .catch(err => {
-                        console.error("Ошибка проверки:", err);
-                    });
+                    .catch(err => console.error("Ошибка проверки:", err));
             }, 2000);
         });
 
@@ -578,8 +570,11 @@
                 avatarPlaceholder.style.display = 'flex';
             }
 
+            // ИСПРАВЛЕНИЕ: Считаем только те посты, которые написал сам пользователь
             let myPosts = posts.filter(p => p.author === userData.name);
             let totalLikes = myPosts.reduce((sum, p) => sum + p.likes, 0);
+            
+            // Если это новый пользователь и у него нет постов, ставим 0
             document.getElementById('statPosts').textContent = myPosts.length;
             document.getElementById('statLikes').textContent = totalLikes;
         }
