@@ -40,7 +40,7 @@
             cursor: url('shersh_cursor.png') 16 16, auto; 
         }
 
-        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag {
+        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag, .author-name {
             cursor: url('shersh_cursor.png') 16 16, pointer !important;
         }
 
@@ -174,7 +174,19 @@
         }
 
         .post-card h2 { margin: 0; font-size: 1.4rem; flex-grow: 1; }
-        .post-meta { font-size: 0.9em; color: #888; margin-bottom: 15px; display: flex; gap: 10px; }
+        .post-meta { font-size: 0.9em; color: #888; margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
+        
+        .author-name {
+            color: var(--gold-accent);
+            font-weight: bold;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .author-name:hover {
+            color: var(--gold-hover);
+            text-decoration: underline;
+        }
+
         .post-content { line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; }
         .post-actions { display: flex; gap: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; }
 
@@ -221,7 +233,7 @@
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            backdrop-filter: blur(4px); /* Легкое размытие фона */
+            backdrop-filter: blur(4px);
         }
 
         .modal-content {
@@ -234,7 +246,7 @@
             max-height: 85vh;
             overflow-y: auto;
             text-align: left; 
-            animation: modalFadeIn 0.3s ease-out; /* Плавное появление */
+            animation: modalFadeIn 0.3s ease-out;
         }
 
         @keyframes modalFadeIn {
@@ -266,7 +278,7 @@
 
         .modal-content input, .modal-content textarea {
             width: 100%;
-            padding: 15px 15px 15px 45px; /* Отступ слева для иконки */
+            padding: 15px 15px 15px 45px;
             border: 2px solid var(--border-color);
             border-radius: 10px;
             background-color: var(--input-bg);
@@ -339,16 +351,8 @@
             background-color: var(--comment-bg);
         }
 
-        /* Стили для окна входа */
-        #loginModal .modal-content {
-            text-align: center;
-        }
-        #loginModal label {
-            display: block;
-            text-align: left;
-            margin-bottom: 5px;
-            font-size: 0.9rem;
-        }
+        #loginModal .modal-content { text-align: center; }
+        #loginModal label { display: block; text-align: left; margin-bottom: 5px; font-size: 0.9rem; }
 
         .field-error { color: var(--error-color); font-size: 0.8rem; margin-bottom: 15px; display: none; text-align: left; }
 
@@ -467,6 +471,7 @@
         <div id="posts-container"></div>
     </main>
 
+    <!-- МОЙ ПРОФИЛЬ -->
     <main id="profile-page" style="display: none;">
         <div class="profile-header">
             <div class="avatar-container" id="avatarContainer" onclick="document.getElementById('avatarInput').click()">
@@ -499,7 +504,26 @@
         </div>
     </main>
 
-    <!-- ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОСТА (КРАСИВОЕ) -->
+    <!-- ЧУЖОЙ ПРОФИЛЬ -->
+    <main id="other-profile-page" style="display: none;">
+        <button class="btn btn-cancel" onclick="showPage('feed')" style="margin-bottom: 20px;">← Назад к ленте</button>
+        <div class="profile-header">
+            <div class="avatar-container" style="cursor: default;">
+                <div class="avatar-placeholder">👤</div>
+            </div>
+            <div class="profile-info">
+                <h2><span id="otherProfileNameDisplay">Имя</span></h2>
+                <div class="profile-nickname"><span id="otherProfileNickDisplay">@ник</span></div>
+                <div class="profile-bio" id="otherProfileBioDisplay">О себе пока ничего не написано...</div>
+                <div class="stats">
+                    <span>📝 Историй: <b id="otherStatPosts">0</b></span>
+                    <span>👍 Лайков: <b id="otherStatLikes">0</b></span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОСТА -->
     <div class="modal-overlay" id="postModal">
         <div class="modal-content">
             <h2 id="postModalTitle">Новая история</h2>
@@ -702,6 +726,8 @@
             if (!userData.name) return;
             document.getElementById('feed-page').style.display = page === 'feed' ? 'block' : 'none';
             document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
+            document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
+            
             if (page === 'profile') updateProfileUI();
         }
 
@@ -727,6 +753,23 @@
             document.getElementById('statPosts').textContent = myPosts.length;
             document.getElementById('statLikes').textContent = totalLikes;
         }
+
+        // --- ОТКРЫТИЕ ЧУЖОГО ПРОФИЛЯ ---
+        window.openAuthorProfile = function(authorName) {
+            const author = usersDB.find(u => u.name === authorName);
+            
+            document.getElementById('otherProfileNameDisplay').textContent = authorName;
+            document.getElementById('otherProfileNickDisplay').textContent = author ? author.nickname : '@unknown';
+            document.getElementById('otherProfileBioDisplay').textContent = author && author.bio ? author.bio : 'О себе пока ничего не написано...';
+
+            const authorPosts = posts.filter(p => p.author === authorName);
+            const totalLikes = authorPosts.reduce((sum, p) => sum + p.likes, 0);
+            
+            document.getElementById('otherStatPosts').textContent = authorPosts.length;
+            document.getElementById('otherStatLikes').textContent = totalLikes;
+
+            showPage('other');
+        };
 
         document.getElementById('avatarInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -868,7 +911,7 @@
                         ${controlsHTML}
                     </div>
                     <div class="post-meta">
-                        <span>Автор: ${post.author}</span>
+                        <span>Автор: <a href="#" class="author-name" onclick="openAuthorProfile('${post.author}')">${post.author}</a></span>
                         <span>•</span>
                         <span>${dateStr}</span>
                     </div>
