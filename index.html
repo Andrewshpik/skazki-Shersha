@@ -424,7 +424,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- ОКНО ВХОДА -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-content">
             <h2>👑 Добро пожаловать в Сказки Шерша!</h2>
@@ -454,7 +453,6 @@
         </div>
     </div>
 
-    <!-- ОКНО РЕДАКТИРОВАНИЯ ПРОФИЛЯ -->
     <div class="modal-overlay" id="editProfileModal">
         <div class="modal-content">
             <h2>Редактировать профиль</h2>
@@ -493,7 +491,6 @@
         <div id="posts-container"></div>
     </main>
 
-    <!-- МОЙ ПРОФИЛЬ -->
     <main id="profile-page" style="display: none;">
         <div class="profile-header">
             <div class="avatar-container" id="avatarContainer" onclick="document.getElementById('avatarInput').click()">
@@ -526,7 +523,6 @@
         </div>
     </main>
 
-    <!-- ЧУЖОЙ ПРОФИЛЬ -->
     <main id="other-profile-page" style="display: none;">
         <button class="btn btn-cancel" onclick="showPage('feed')" style="margin-bottom: 20px;">← Назад к ленте</button>
         <div class="profile-header">
@@ -545,7 +541,6 @@
         </div>
     </main>
 
-    <!-- ОКНО ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ПОСТА -->
     <div class="modal-overlay" id="postModal">
         <div class="modal-content">
             <h2 id="postModalTitle">Новая история</h2>
@@ -574,7 +569,6 @@
         </div>
     </div>
 
-    <!-- ОКНО КОММЕНТАРИЕВ -->
     <div class="modal-overlay" id="commentsModal">
         <div class="modal-content">
             <h2 style="text-align: center;">💬 Комментарии</h2>
@@ -588,7 +582,6 @@
     </div>
 
     <script>
-        // --- ВХОД ЧЕРЕЗ БОТА ---
         const botUsername = "shersh_auth_bot"; 
         let checkInterval = null;
 
@@ -617,7 +610,6 @@
             }, 2000);
         });
 
-        // --- ИСКРЫ ---
         document.addEventListener('mousemove', (e) => {
             if (Math.random() > 0.4) return;
             const sparkle = document.createElement('div');
@@ -644,7 +636,6 @@
             }
         });
 
-        // --- УВЕДОМЛЕНИЯ ---
         function showToast(message, isError = false) {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -657,7 +648,6 @@
             }, 3000);
         }
 
-        // --- ПОДСКАЗКИ И СЧЕТЧИК ---
         function insertHint(text) {
             const textarea = document.getElementById('postText');
             textarea.value = text + textarea.value;
@@ -671,7 +661,6 @@
             document.getElementById('wordCount').textContent = `Слов: ${wordCount}`;
         }
 
-        // --- БАЗА ПОЛЬЗОВАТЕЛЕЙ ---
         let usersDB = JSON.parse(localStorage.getItem('shersh_users_db')) || [];
         if (!usersDB.find(u => u.nickname.toLowerCase() === '@шерш')) {
             usersDB.push({ name: 'Шерш', nickname: '@Шерш' });
@@ -776,7 +765,6 @@
             document.getElementById('statLikes').textContent = totalLikes;
         }
 
-        // --- ОТКРЫТИЕ ЧУЖОГО ПРОФИЛЯ ---
         window.openAuthorProfile = function(authorName) {
             const author = usersDB.find(u => u.name === authorName);
             
@@ -867,7 +855,6 @@
             }
         });
 
-        // --- ТЕМА ---
         const themeToggleBtn = document.getElementById('themeToggle');
         const body = document.body;
         if (localStorage.getItem('theme') === 'dark') {
@@ -887,7 +874,6 @@
             }
         });
 
-        // --- ДАТЫ ---
         function formatDate(dateString) {
             const date = new Date(dateString);
             const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -896,7 +882,6 @@
             return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()} в ${hh}:${mm}`;
         }
 
-        // --- ПОСТЫ ---
         let posts = JSON.parse(localStorage.getItem('shersh_posts'));
         if (!posts) {
             posts = [
@@ -919,7 +904,6 @@
                 const dateStr = formatDate(post.date);
                 const commentCount = post.comments ? post.comments.length : 0;
                 
-                // Ищем автора поста в базе, чтобы взять его аватар
                 const authorData = usersDB.find(u => u.name === post.author);
                 const avatarSrc = authorData && authorData.avatar ? authorData.avatar : null;
                 const avatarHTML = avatarSrc 
@@ -1032,7 +1016,6 @@
             postModal.style.display = 'none';
         });
 
-        // --- КОММЕНТАРИИ ---
         const commentsModal = document.getElementById('commentsModal');
         const commentsList = document.getElementById('commentsList');
         const commentInput = document.getElementById('commentInput');
@@ -1084,7 +1067,6 @@
             localStorage.setItem('shersh_posts', JSON.stringify(posts));
         }
 
-        // --- ЗАПУСК ---
         checkAuth();
         renderPosts();
     </script>
