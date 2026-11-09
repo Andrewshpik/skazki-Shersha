@@ -111,6 +111,29 @@
 
         .theme-toggle:hover { transform: scale(1.2) rotate(15deg); }
 
+        .search-bar {
+            max-width: 800px;
+            margin: 15px auto;
+            padding: 0 20px;
+        }
+
+        .search-bar input {
+            width: 100%;
+            padding: 12px 20px;
+            border-radius: 20px;
+            border: 2px solid var(--border-color);
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        .search-bar input:focus {
+            outline: none;
+            border-color: var(--gold-accent);
+        }
+
         .toast-container {
             position: fixed;
             bottom: 20px;
@@ -373,6 +396,12 @@
             background-color: var(--comment-bg);
         }
 
+        .btn-delete {
+            background-color: var(--error-color);
+            color: white;
+        }
+        .btn-delete:hover { background-color: #c0392b; }
+
         #loginModal .modal-content { text-align: center; }
         #loginModal label { display: block; text-align: left; margin-bottom: 5px; font-size: 0.9rem; }
 
@@ -424,18 +453,28 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
+    <!-- МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ АККАУНТА -->
+    <div class="modal-overlay" id="deleteAccountModal">
+        <div class="modal-content">
+            <h2 style="color: var(--error-color);">Удаление аккаунта</h2>
+            <p style="text-align: center; margin-bottom: 20px;">Вы уверены, что хотите удалить свой аккаунт? Все ваши истории останутся, но профиль будет удален навсегда.</p>
+            <div class="modal-buttons" style="justify-content: center;">
+                <button class="btn btn-cancel" id="cancelDeleteBtn">Отмена</button>
+                <button class="btn btn-delete" id="confirmDeleteBtn">Удалить</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ОКНО АВТОРИЗАЦИИ -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-content">
             <h2>👑 Добро пожаловать в Сказки Шерша!</h2>
             
-            <!-- ВКЛАДКИ ВХОД/РЕГИСТРАЦИЯ -->
             <div style="display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;">
                 <button class="btn btn-cancel" id="tabLogin" onclick="switchAuthTab('login')" style="width: 45%;">Вход</button>
                 <button class="btn btn-cancel" id="tabRegister" onclick="switchAuthTab('register')" style="width: 45%;">Регистрация</button>
             </div>
 
-            <!-- ФОРМА ВХОДА -->
             <div id="loginForm">
                 <label>Имя:</label>
                 <input type="text" id="loginNameInput" placeholder="Твое имя">
@@ -446,7 +485,6 @@
                 </div>
             </div>
 
-            <!-- ФОРМА РЕГИСТРАЦИИ (СКРЫТА) -->
             <div id="registerForm" style="display: none;">
                 <label>Имя:</label>
                 <input type="text" id="regNameInput" placeholder="Твое имя">
@@ -475,7 +513,6 @@
         </div>
     </div>
 
-    <!-- ОКНО РЕДАКТИРОВАНИЯ ПРОФИЛЯ -->
     <div class="modal-overlay" id="editProfileModal">
         <div class="modal-content">
             <h2>Редактировать профиль</h2>
@@ -507,6 +544,10 @@
                 <button class="theme-toggle" id="themeToggle" title="Переключить тему">🌙</button>
                 <button class="btn" id="addPostBtn">Добавить историю</button>
             </div>
+        </div>
+        <!-- ПОИСК -->
+        <div class="search-bar" id="searchContainer">
+            <input type="text" id="searchInput" placeholder="🔍 Поиск по историям..." oninput="filterPosts()">
         </div>
     </header>
 
@@ -543,6 +584,7 @@
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <button class="btn" id="editProfileBtn">Редактировать профиль</button>
             <button class="btn btn-cancel" id="logoutBtn">Выйти</button>
+            <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
         </div>
     </main>
 
@@ -606,7 +648,6 @@
     </div>
 
     <script>
-        // --- ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ВХОД/РЕГИСТРАЦИЯ ---
         function switchAuthTab(tab) {
             const loginForm = document.getElementById('loginForm');
             const registerForm = document.getElementById('registerForm');
@@ -630,7 +671,6 @@
             }
         }
 
-        // --- ИСКРЫ ---
         document.addEventListener('mousemove', (e) => {
             if (Math.random() > 0.4) return;
             const sparkle = document.createElement('div');
@@ -657,7 +697,6 @@
             }
         });
 
-        // --- УВЕДОМЛЕНИЯ (БЕЗ АЛЕРТОВ) ---
         function showToast(message, isError = false) {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
@@ -670,7 +709,6 @@
             }, 3000);
         }
 
-        // --- ПОДСКАЗКИ И СЧЕТЧИК ---
         function insertHint(text) {
             const textarea = document.getElementById('postText');
             textarea.value = text + textarea.value;
@@ -684,7 +722,6 @@
             document.getElementById('wordCount').textContent = `Слов: ${wordCount}`;
         }
 
-        // --- БАЗА ПОЛЬЗОВАТЕЛЕЙ ---
         let usersDB = JSON.parse(localStorage.getItem('shersh_users_db')) || [];
         if (!usersDB.find(u => u.nickname.toLowerCase() === '@шерш')) {
             usersDB.push({ name: 'Шерш', nickname: '@Шерш', password: 'shersh123' });
@@ -702,6 +739,7 @@
         const loginModal = document.getElementById('loginModal');
         const editProfileModal = document.getElementById('editProfileModal');
         const postModal = document.getElementById('postModal');
+        const deleteAccountModal = document.getElementById('deleteAccountModal');
         let editingPostId = null;
 
         function checkAuth() {
@@ -712,7 +750,6 @@
             }
         }
 
-        // --- РЕГИСТРАЦИЯ ---
         document.getElementById('registerBtn').addEventListener('click', () => {
             const name = document.getElementById('regNameInput').value.trim();
             const nick = document.getElementById('regNickInput').value.trim();
@@ -742,7 +779,6 @@
             showToast(`Добро пожаловать, ${name}!`);
         });
 
-        // --- ВХОД ---
         document.getElementById('loginBtn').addEventListener('click', () => {
             const name = document.getElementById('loginNameInput').value.trim();
             const pass = document.getElementById('loginPassInput').value.trim();
@@ -770,7 +806,6 @@
             showToast(`С возвращением, ${user.name}!`);
         });
 
-        // --- ВХОД КАК ГОСТЬ ---
         document.getElementById('guestBtn').addEventListener('click', () => {
             userData = { name: 'Гость', nickname: '@guest', bio: 'Просто зашел посмотреть', avatar: '', isGuest: true };
             saveUserData();
@@ -778,7 +813,6 @@
             showToast('Вы вошли как Гость');
         });
 
-        // --- ВХОД ЧЕРЕЗ TELEGRAM ---
         const botUsername = "shersh_auth_bot"; 
         let checkInterval = null;
 
@@ -816,6 +850,14 @@
         function updateHeaderUI() {
             const btn = document.getElementById('headerProfileBtn');
             btn.textContent = userData.name ? `👋 ${userData.name}` : '👋 Гость';
+            
+            // Скрываем поиск, если мы в профиле
+            const searchContainer = document.getElementById('searchContainer');
+            if (document.getElementById('profile-page').style.display === 'block' || document.getElementById('other-profile-page').style.display === 'block') {
+                searchContainer.style.display = 'none';
+            } else {
+                searchContainer.style.display = 'block';
+            }
         }
 
         function showPage(page) {
@@ -823,6 +865,8 @@
             document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
             document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
             
+            updateHeaderUI(); // Обновляем видимость поиска
+
             if (page === 'profile') updateProfileUI();
         }
 
@@ -856,7 +900,6 @@
             document.getElementById('otherProfileNickDisplay').textContent = author ? author.nickname : '@unknown';
             document.getElementById('otherProfileBioDisplay').textContent = author && author.bio ? author.bio : 'О себе пока ничего не написано...';
 
-            // Аватарка
             const avatarImg = document.getElementById('otherAvatarImage');
             const avatarPlaceholder = document.getElementById('otherAvatarPlaceholder');
             
@@ -885,7 +928,6 @@
                 reader.onload = function(event) {
                     userData.avatar = event.target.result;
                     
-                    // Обновляем в базе
                     const userIndex = usersDB.findIndex(u => u.name === userData.name);
                     if (userIndex !== -1) {
                         usersDB[userIndex].avatar = userData.avatar;
@@ -956,6 +998,29 @@
             location.reload();
         });
 
+        // --- УДАЛЕНИЕ АККАУНТА ---
+        document.getElementById('deleteAccountBtn').addEventListener('click', () => {
+            deleteAccountModal.style.display = 'flex';
+        });
+
+        document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
+            deleteAccountModal.style.display = 'none';
+        });
+
+        document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
+            // Удаляем из базы
+            usersDB = usersDB.filter(u => u.name !== userData.name);
+            saveUsersDB();
+            
+            // Удаляем из сессии
+            localStorage.removeItem('shersh_user');
+            
+            // Показываем сообщение и перезагружаем
+            deleteAccountModal.style.display = 'none';
+            showToast('Аккаунт удален');
+            setTimeout(() => location.reload(), 1500);
+        });
+
         // --- ТЕМА ---
         const themeToggleBtn = document.getElementById('themeToggle');
         const body = document.body;
@@ -976,7 +1041,6 @@
             }
         });
 
-        // --- ДАТЫ ---
         function formatDate(dateString) {
             const date = new Date(dateString);
             const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -985,7 +1049,6 @@
             return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()} в ${hh}:${mm}`;
         }
 
-        // --- ПОСТЫ ---
         let posts = JSON.parse(localStorage.getItem('shersh_posts'));
         if (!posts) {
             posts = [
@@ -1047,6 +1110,23 @@
             });
         }
 
+        // --- ПОИСК ---
+        function filterPosts() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const postCards = document.querySelectorAll('.post-card');
+            
+            postCards.forEach(card => {
+                const title = card.querySelector('h2').textContent.toLowerCase();
+                const text = card.querySelector('.post-content').textContent.toLowerCase();
+                
+                if (title.includes(query) || text.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
         window.toggleLike = function(index) {
             posts[index].isLiked = !posts[index].isLiked;
             posts[index].likes += posts[index].isLiked ? 1 : -1;
@@ -1068,16 +1148,18 @@
         };
 
         window.deletePost = function(id) {
-            if (confirm('Точно удалить эту историю?')) {
-                posts = posts.filter(p => p.id !== id);
-                saveData();
-                renderPosts();
-                showToast('История удалена');
-            }
+            // Без alert/confirm! Используем модальное окно или просто удаляем (для простоты - сразу)
+            posts = posts.filter(p => p.id !== id);
+            saveData();
+            renderPosts();
+            showToast('История удалена');
         };
 
         document.getElementById('addPostBtn').addEventListener('click', () => {
-            if(!userData.name) return;
+            if(!userData.name || userData.isGuest) {
+                showToast('Гости не могут писать истории!', true);
+                return;
+            }
             editingPostId = null;
             document.getElementById('postModalTitle').textContent = 'Новая история';
             document.getElementById('postTitle').value = '';
@@ -1120,7 +1202,6 @@
             postModal.style.display = 'none';
         });
 
-        // --- КОММЕНТАРИИ ---
         const commentsModal = document.getElementById('commentsModal');
         const commentsList = document.getElementById('commentsList');
         const commentInput = document.getElementById('commentInput');
@@ -1157,6 +1238,10 @@
         document.getElementById('closeCommentsBtn').addEventListener('click', () => { commentsModal.style.display = 'none'; });
 
         document.getElementById('submitCommentBtn').addEventListener('click', () => {
+            if(!userData.name || userData.isGuest) {
+                showToast('Гости не могут писать комментарии!', true);
+                return;
+            }
             const text = commentInput.value.trim();
             if (!text) return;
             const newComment = { author: userData.name, date: new Date().toISOString(), text: text };
@@ -1172,7 +1257,6 @@
             localStorage.setItem('shersh_posts', JSON.stringify(posts));
         }
 
-        // --- ЗАПУСК ---
         checkAuth();
         renderPosts();
     </script>
