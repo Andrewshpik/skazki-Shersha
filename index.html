@@ -42,7 +42,7 @@
             cursor: url('shersh_cursor.png') 16 16, auto; 
         }
 
-        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag, .author-name, .post-avatar, .post-image {
+        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag, .author-name, .post-avatar, .post-image, .toggle-password {
             cursor: url('shersh_cursor.png') 16 16, pointer !important;
         }
 
@@ -113,21 +113,9 @@
 
         main { max-width: 800px; margin: 30px auto; padding: 0 15px; }
 
-        /* ПУСТАЯ ЛЕНТА */
-        .empty-feed {
-            text-align: center;
-            padding: 50px 20px;
-            color: #888;
-        }
-        .empty-feed h3 {
-            font-size: 1.5rem;
-            color: var(--text-color);
-            margin-bottom: 10px;
-        }
-        .empty-feed p {
-            font-size: 1.1rem;
-            margin-bottom: 20px;
-        }
+        .empty-feed { text-align: center; padding: 50px 20px; color: #888; }
+        .empty-feed h3 { font-size: 1.5rem; color: var(--text-color); margin-bottom: 10px; }
+        .empty-feed p { font-size: 1.1rem; margin-bottom: 20px; }
 
         .post-card {
             background-color: var(--card-bg); border-radius: 12px; padding: 20px;
@@ -185,13 +173,26 @@
         .input-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); font-size: 1.2rem; opacity: 0.5; }
 
         .modal-content input[type="text"], .modal-content input[type="password"], .modal-content textarea {
-            width: 100%; padding: 15px 15px 15px 45px; border: 2px solid var(--border-color);
+            width: 100%; padding: 15px 45px 15px 45px; border: 2px solid var(--border-color);
             border-radius: 10px; background-color: var(--input-bg); color: var(--text-color);
             font-family: inherit; font-size: 1rem; transition: border-color 0.3s, box-shadow 0.3s;
         }
 
-        .modal-content textarea { padding-top: 15px; resize: vertical; min-height: 120px; line-height: 1.5; }
+        .modal-content textarea { padding-top: 15px; resize: vertical; min-height: 120px; line-height: 1.5; padding-right: 15px; }
         .modal-content input:focus, .modal-content textarea:focus { outline: none; border-color: var(--gold-accent); box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2); }
+
+        /* Стили для глазика */
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+            user-select: none;
+        }
+        .toggle-password:hover { opacity: 1; }
 
         .word-count { text-align: right; font-size: 0.85rem; color: #888; margin-top: -10px; margin-bottom: 15px; }
 
@@ -257,25 +258,12 @@
         .profile-bio { font-size: 0.95rem; color: #888; margin-bottom: 15px; line-height: 1.4; white-space: pre-wrap; }
         .stats { display: flex; gap: 15px; font-size: 0.9rem; }
 
-        /* МОДАЛЬНОЕ ОКНО ДЛЯ КАРТИНКИ */
         .image-modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
-            z-index: 3000;
-            justify-content: center;
-            align-items: center;
-            cursor: zoom-out;
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 3000; justify-content: center; align-items: center; cursor: zoom-out;
         }
-        .image-modal img {
-            max-width: 95%;
-            max-height: 95vh;
-            object-fit: contain;
-            border-radius: 8px;
-        }
+        .image-modal img { max-width: 95%; max-height: 95vh; object-fit: contain; border-radius: 8px; }
 
-        /* --- АДАПТИВНОСТЬ --- */
         @media (max-width: 768px) {
             .nav-panel { flex-direction: column; gap: 10px; padding: 10px; }
             .nav-panel h1 { font-size: 1.3rem; }
@@ -299,7 +287,6 @@
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЛЯ ПРОСМОТРА КАРТИНОК -->
     <div class="image-modal" id="imageModal" onclick="closeImageModal()">
         <img id="fullImage" src="" alt="Просмотр">
     </div>
@@ -328,7 +315,10 @@
                 <label>Имя:</label>
                 <input type="text" id="loginNameInput" placeholder="Твое имя">
                 <label>Пароль:</label>
-                <input type="password" id="loginPassInput" placeholder="Пароль">
+                <div class="input-wrapper" style="margin-bottom: 5px;">
+                    <input type="password" id="loginPassInput" placeholder="Пароль">
+                    <span class="toggle-password" onclick="togglePasswordVisibility('loginPassInput', this)">👁️</span>
+                </div>
                 <div class="modal-buttons" style="justify-content: center;">
                     <button class="btn" id="loginBtn" style="width: 100%;">Войти</button>
                 </div>
@@ -340,7 +330,10 @@
                 <label>Никнейм (начинается с @):</label>
                 <input type="text" id="regNickInput" placeholder="@nickname">
                 <label>Пароль:</label>
-                <input type="password" id="regPassInput" placeholder="Придумай пароль">
+                <div class="input-wrapper" style="margin-bottom: 5px;">
+                    <input type="password" id="regPassInput" placeholder="Придумай пароль">
+                    <span class="toggle-password" onclick="togglePasswordVisibility('regPassInput', this)">👁️</span>
+                </div>
                 <div class="modal-buttons" style="justify-content: center;">
                     <button class="btn" id="registerBtn" style="width: 100%;">Зарегистрироваться</button>
                 </div>
@@ -507,6 +500,18 @@
     </div>
 
     <script>
+        // --- ГЛАЗИК ДЛЯ ПАРОЛЯ ---
+        function togglePasswordVisibility(inputId, iconElement) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                iconElement.textContent = '🙈'; // Иконка "обезьянка закрывает глаза"
+            } else {
+                input.type = 'password';
+                iconElement.textContent = '👁️';
+            }
+        }
+
         function switchAuthTab(tab) {
             const loginForm = document.getElementById('loginForm');
             const registerForm = document.getElementById('registerForm');
@@ -557,7 +562,6 @@
             }, 3000);
         }
 
-        // --- ПРОСМОТР КАРТИНОК ---
         function openImageModal(src) {
             document.getElementById('fullImage').src = src;
             document.getElementById('imageModal').style.display = 'flex';
@@ -677,7 +681,6 @@
             const btn = document.getElementById('headerProfileBtn');
             btn.textContent = userData.name ? `👋 ${userData.name}` : '👋 Гость';
 
-            // Показываем кнопку выхода, если мы авторизованы
             const logoutBtn = document.getElementById('headerLogoutBtn');
             if (userData.name && !userData.isGuest) {
                 logoutBtn.style.display = 'block';
@@ -800,12 +803,7 @@
         });
 
         document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
-        
-        // Выход из шапки
-        document.getElementById('headerLogoutBtn').addEventListener('click', () => {
-            localStorage.removeItem('shersh_user');
-            location.reload();
-        });
+        document.getElementById('headerLogoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
 
         document.getElementById('deleteAccountBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'flex'; });
         document.getElementById('cancelDeleteBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'none'; });
@@ -850,7 +848,6 @@
         function renderPosts() {
             postsContainer.innerHTML = '';
             
-            // ПРОВЕРКА НА ПУСТУЮ ЛЕНТУ
             if (posts.length === 0) {
                 postsContainer.innerHTML = `
                     <div class="empty-feed">
@@ -1049,12 +1046,12 @@
         document.getElementById('submitCommentBtn').addEventListener('click', () => {
             if(!userData.name || userData.isGuest) { showToast('Гости не могут писать комментарии!', true); return; }
             const text = commentInput.value.trim();
-            if (!text && !currentCommentImageBase64) return; // Пустой комментарий нельзя
+            if (!text && !currentCommentImageBase64) return; 
 
             const newComment = { 
                 author: userData.name, 
                 date: new Date().toISOString(), 
-                text: text || '📷 Фото', // Если только фото, пишем заглушку
+                text: text || '📷 Фото', 
                 image: currentCommentImageBase64 
             };
             
