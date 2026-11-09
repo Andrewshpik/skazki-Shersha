@@ -40,7 +40,7 @@
             cursor: url('shersh_cursor.png') 16 16, auto; 
         }
 
-        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag, .author-name {
+        button, a, .action-btn, .btn, .theme-toggle, .user-info, .edit-icon, .delete-icon, .hint-tag, .author-name, .post-avatar {
             cursor: url('shersh_cursor.png') 16 16, pointer !important;
         }
 
@@ -174,8 +174,30 @@
         }
 
         .post-card h2 { margin: 0; font-size: 1.4rem; flex-grow: 1; }
-        .post-meta { font-size: 0.9em; color: #888; margin-bottom: 15px; display: flex; gap: 10px; align-items: center; }
         
+        .post-meta { 
+            font-size: 0.9em; 
+            color: #888; 
+            margin-bottom: 15px; 
+            display: flex; 
+            gap: 10px; 
+            align-items: center; 
+        }
+
+        .post-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--gold-accent);
+            background-color: var(--border-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+            color: var(--text-color);
+        }
+
         .author-name {
             color: var(--gold-accent);
             font-weight: bold;
@@ -897,6 +919,13 @@
                 const dateStr = formatDate(post.date);
                 const commentCount = post.comments ? post.comments.length : 0;
                 
+                // Ищем автора поста в базе, чтобы взять его аватар
+                const authorData = usersDB.find(u => u.name === post.author);
+                const avatarSrc = authorData && authorData.avatar ? authorData.avatar : null;
+                const avatarHTML = avatarSrc 
+                    ? `<img src="${avatarSrc}" class="post-avatar" onclick="openAuthorProfile('${post.author}')">` 
+                    : `<div class="post-avatar" onclick="openAuthorProfile('${post.author}')">👤</div>`;
+
                 const isAuthor = userData.name === post.author;
                 const controlsHTML = isAuthor ? `
                     <div class="post-controls">
@@ -911,6 +940,7 @@
                         ${controlsHTML}
                     </div>
                     <div class="post-meta">
+                        ${avatarHTML}
                         <span>Автор: <a href="#" class="author-name" onclick="openAuthorProfile('${post.author}')">${post.author}</a></span>
                         <span>•</span>
                         <span>${dateStr}</span>
@@ -1058,8 +1088,6 @@
         checkAuth();
         renderPosts();
     </script>
-window.openAuthorProfile = function(authorName) {
-    const author = usersDB.find(u => u.name === authorName);
-    // ...
+
 </body>
 </html>
