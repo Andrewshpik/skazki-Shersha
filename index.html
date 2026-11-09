@@ -1058,6 +1058,8 @@
         checkAuth();
         renderPosts();
     </script>
-
+window.openAuthorProfile = function(authorName) {
+    const author = usersDB.find(u => u.name === authorName);
+    // ...
 </body>
 </html>
