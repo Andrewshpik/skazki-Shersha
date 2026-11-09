@@ -30,6 +30,10 @@
             --input-bg: #16213e;
         }
 
+        * {
+            box-sizing: border-box; /* Важно для мобилок */
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg-color);
@@ -205,6 +209,7 @@
             display: flex; 
             gap: 10px; 
             align-items: center; 
+            flex-wrap: wrap; /* Для мобилок */
         }
 
         .post-avatar {
@@ -233,6 +238,16 @@
         }
 
         .post-content { line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; }
+        
+        .post-image {
+            width: 100%;
+            max-height: 400px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
         .post-actions { display: flex; gap: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; }
 
         .post-controls {
@@ -279,16 +294,17 @@
             justify-content: center;
             align-items: center;
             backdrop-filter: blur(4px);
+            padding: 15px; /* Для мобилок */
         }
 
         .modal-content {
             background-color: var(--card-bg);
             padding: 30px;
             border-radius: 16px;
-            width: 90%;
+            width: 100%;
             max-width: 600px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            max-height: 85vh;
+            max-height: 90vh;
             overflow-y: auto;
             text-align: left; 
             animation: modalFadeIn 0.3s ease-out;
@@ -337,7 +353,7 @@
         .modal-content textarea {
             padding-top: 15px;
             resize: vertical;
-            min-height: 150px;
+            min-height: 120px;
             line-height: 1.5;
         }
 
@@ -384,6 +400,7 @@
             justify-content: flex-end; 
             gap: 15px; 
             margin-top: 25px; 
+            flex-wrap: wrap; /* Для мобилок */
         }
 
         .btn-cancel { 
@@ -423,6 +440,7 @@
             box-shadow: var(--shadow);
             margin-bottom: 20px;
             border: 1px solid var(--border-color);
+            flex-wrap: wrap; /* Для мобилок */
         }
 
         .avatar-container {
@@ -447,13 +465,72 @@
         .edit-icon:hover { opacity: 1; transform: scale(1.2); }
         .profile-bio { font-size: 0.95rem; color: #888; margin-bottom: 15px; line-height: 1.4; white-space: pre-wrap; }
         .stats { display: flex; gap: 15px; font-size: 0.9rem; }
+
+        /* --- АДАПТИВНОСТЬ ДЛЯ ТЕЛЕФОНОВ И ПЛАНШЕТОВ --- */
+        @media (max-width: 768px) {
+            .nav-panel {
+                flex-direction: column;
+                gap: 15px;
+                padding: 15px;
+            }
+            .nav-panel h1 {
+                font-size: 1.3rem;
+            }
+            .user-info, .btn {
+                font-size: 0.9rem;
+                padding: 8px 15px;
+            }
+            .search-bar {
+                padding: 0 15px;
+                margin: 10px auto;
+            }
+            .post-card {
+                padding: 15px;
+            }
+            .post-card h2 {
+                font-size: 1.2rem;
+            }
+            .modal-content {
+                padding: 20px;
+            }
+            .modal-content h2 {
+                font-size: 1.5rem;
+            }
+            .profile-header {
+                flex-direction: column;
+                text-align: center;
+                padding: 20px;
+            }
+            .profile-info h2 {
+                justify-content: center;
+            }
+            .profile-nickname {
+                justify-content: center;
+            }
+            .stats {
+                justify-content: center;
+            }
+            .avatar-container {
+                width: 80px;
+                height: 80px;
+            }
+            .btn {
+                width: 100%; /* Кнопки на всю ширину */
+                text-align: center;
+            }
+            .modal-buttons {
+                flex-direction: column;
+            }
+            .modal-buttons .btn {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
 
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ПОДТВЕРЖДЕНИЯ УДАЛЕНИЯ АККАУНТА -->
     <div class="modal-overlay" id="deleteAccountModal">
         <div class="modal-content">
             <h2 style="color: var(--error-color);">Удаление аккаунта</h2>
@@ -465,7 +542,6 @@
         </div>
     </div>
 
-    <!-- ОКНО АВТОРИЗАЦИИ -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-content">
             <h2>👑 Добро пожаловать в Сказки Шерша!</h2>
@@ -545,7 +621,6 @@
                 <button class="btn" id="addPostBtn">Добавить историю</button>
             </div>
         </div>
-        <!-- ПОИСК -->
         <div class="search-bar" id="searchContainer">
             <input type="text" id="searchInput" placeholder="🔍 Поиск по историям..." oninput="filterPosts()">
         </div>
@@ -581,7 +656,7 @@
             </div>
         </div>
         
-        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
             <button class="btn" id="editProfileBtn">Редактировать профиль</button>
             <button class="btn btn-cancel" id="logoutBtn">Выйти</button>
             <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
@@ -624,9 +699,13 @@
             
             <div class="input-wrapper">
                 <span class="input-icon" style="top: 20px;">✍️</span>
-                <textarea id="postText" placeholder="Расскажи свою историю здесь. Не бойся, Шерш не осудит..." oninput="updateWordCount()"></textarea>
+                <textarea id="postText" placeholder="Расскажи свою историю здесь..." oninput="updateWordCount()"></textarea>
             </div>
             <div class="word-count" id="wordCount">Слов: 0</div>
+
+            <!-- ЗАГРУЗКА КАРТИНКИ -->
+            <label style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Прикрепить картинку (необязательно):</label>
+            <input type="file" id="postImageInput" accept="image/*" style="padding: 10px; border: 1px solid var(--border-color); background: var(--input-bg);">
 
             <div class="modal-buttons">
                 <button class="btn btn-cancel" id="cancelBtn">Отмена</button>
@@ -741,6 +820,7 @@
         const postModal = document.getElementById('postModal');
         const deleteAccountModal = document.getElementById('deleteAccountModal');
         let editingPostId = null;
+        let currentPostImageBase64 = null; // Для хранения картинки перед сохранением
 
         function checkAuth() {
             if (!userData.name && !userData.isGuest) {
@@ -851,7 +931,6 @@
             const btn = document.getElementById('headerProfileBtn');
             btn.textContent = userData.name ? `👋 ${userData.name}` : '👋 Гость';
             
-            // Скрываем поиск, если мы в профиле
             const searchContainer = document.getElementById('searchContainer');
             if (document.getElementById('profile-page').style.display === 'block' || document.getElementById('other-profile-page').style.display === 'block') {
                 searchContainer.style.display = 'none';
@@ -865,7 +944,7 @@
             document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
             document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
             
-            updateHeaderUI(); // Обновляем видимость поиска
+            updateHeaderUI();
 
             if (page === 'profile') updateProfileUI();
         }
@@ -998,7 +1077,6 @@
             location.reload();
         });
 
-        // --- УДАЛЕНИЕ АККАУНТА ---
         document.getElementById('deleteAccountBtn').addEventListener('click', () => {
             deleteAccountModal.style.display = 'flex';
         });
@@ -1008,20 +1086,14 @@
         });
 
         document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
-            // Удаляем из базы
             usersDB = usersDB.filter(u => u.name !== userData.name);
             saveUsersDB();
-            
-            // Удаляем из сессии
             localStorage.removeItem('shersh_user');
-            
-            // Показываем сообщение и перезагружаем
             deleteAccountModal.style.display = 'none';
             showToast('Аккаунт удален');
             setTimeout(() => location.reload(), 1500);
         });
 
-        // --- ТЕМА ---
         const themeToggleBtn = document.getElementById('themeToggle');
         const body = document.body;
         if (localStorage.getItem('theme') === 'dark') {
@@ -1055,7 +1127,7 @@
                 {
                     id: 1, title: 'Добро пожаловать на наш сайт!', author: 'Андрей', date: new Date().toISOString(),
                     text: 'Привет! Это первый пост на нашем сайте. Здесь мы будем делиться сказками, историями из жизни, театральными закулисьями и всем, что захочется.\n\nШерш уже надел свою корону и готов читать ваши истории.',
-                    likes: 12, isLiked: false, comments: [{ author: 'Шерш', date: new Date().toISOString(), text: 'Ура! Мой сайт работает!' }]
+                    likes: 12, isLiked: false, image: null, comments: [{ author: 'Шерш', date: new Date().toISOString(), text: 'Ура! Мой сайт работает!' }]
                 }
             ];
             saveData();
@@ -1085,6 +1157,8 @@
                     </div>
                 ` : '';
 
+                const imageHTML = post.image ? `<img src="${post.image}" class="post-image">` : '';
+
                 postElement.innerHTML = `
                     <div class="post-header-row">
                         <h2>${post.title}</h2>
@@ -1096,6 +1170,7 @@
                         <span>•</span>
                         <span>${dateStr}</span>
                     </div>
+                    ${imageHTML}
                     <div class="post-content"><p>${post.text}</p></div>
                     <div class="post-actions">
                         <button class="action-btn ${post.isLiked ? 'liked' : ''}" onclick="toggleLike(${index})">
@@ -1110,7 +1185,6 @@
             });
         }
 
-        // --- ПОИСК ---
         function filterPosts() {
             const query = document.getElementById('searchInput').value.toLowerCase();
             const postCards = document.querySelectorAll('.post-card');
@@ -1143,17 +1217,36 @@
             document.getElementById('postTitle').value = post.title;
             document.getElementById('postText').value = post.text;
             document.getElementById('submitPostBtn').textContent = 'Сохранить';
+            
+            // Показываем текущую картинку (если есть)
+            currentPostImageBase64 = post.image || null;
+            document.getElementById('postImageInput').value = ''; 
+
             updateWordCount();
             postModal.style.display = 'flex';
         };
 
         window.deletePost = function(id) {
-            // Без alert/confirm! Используем модальное окно или просто удаляем (для простоты - сразу)
             posts = posts.filter(p => p.id !== id);
             saveData();
             renderPosts();
             showToast('История удалена');
         };
+
+        // --- ЗАГРУЗКА КАРТИНКИ ---
+        document.getElementById('postImageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    currentPostImageBase64 = event.target.result;
+                    showToast('Картинка прикреплена!');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                currentPostImageBase64 = null;
+            }
+        });
 
         document.getElementById('addPostBtn').addEventListener('click', () => {
             if(!userData.name || userData.isGuest) {
@@ -1161,9 +1254,11 @@
                 return;
             }
             editingPostId = null;
+            currentPostImageBase64 = null; // Сброс картинки
             document.getElementById('postModalTitle').textContent = 'Новая история';
             document.getElementById('postTitle').value = '';
             document.getElementById('postText').value = '';
+            document.getElementById('postImageInput').value = ''; // Очищаем инпут
             document.getElementById('submitPostBtn').textContent = 'Опубликовать!';
             updateWordCount();
             postModal.style.display = 'flex';
@@ -1186,12 +1281,13 @@
                 if (post) {
                     post.title = title;
                     post.text = text;
+                    post.image = currentPostImageBase64;
                 }
                 showToast('История обновлена!');
             } else {
                 const newPost = {
                     id: Date.now(), title: title, author: userData.name, date: new Date().toISOString(),
-                    text: text, likes: 0, isLiked: false, comments: []
+                    text: text, likes: 0, isLiked: false, image: currentPostImageBase64, comments: []
                 };
                 posts.unshift(newPost);
                 showToast('История опубликована!');
