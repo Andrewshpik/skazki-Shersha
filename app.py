@@ -11,11 +11,8 @@ CORS(app)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # --- Supabase подключение ---
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://unrabqyebygfqddfxqpx.supabase.co")
-SUPABASE_SERVICE_KEY = os.environ.get(
-    "SUPABASE_SERVICE_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVucmFicXllYnlnZnFkZGZ4cXB4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5NDY5OTQ3NSwiZXhwIjoyMTEwMjc1NDc1fQ.WNiXJheRxtlfdpp-BiBmrpgWSU2rXPyXONYg098iv0E"
-)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://unrabqyebygfqddfxqpx.supabase.co/")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SUPABASE_REST = SUPABASE_URL.rstrip("/") + "/rest/v1"
 _HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
