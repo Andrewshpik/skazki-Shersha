@@ -670,7 +670,9 @@
                 localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
             } catch (e) {
-                if (!localStorage.getItem(POSTS_CACHE_KEY)) {
+                if (localStorage.getItem(POSTS_CACHE_KEY)) {
+                    showToast('Нет связи с сервером — показана сохранённая копия ⚠️', true);
+                } else {
                     showToast('Не удалось загрузить истории: ' + e.message, true);
                 }
             }
