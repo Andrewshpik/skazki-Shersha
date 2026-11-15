@@ -1,6 +1,8 @@
 import os
 import hashlib
 import time
+import binascii
+import uuid
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -35,6 +37,7 @@ def rate_limit(limit=60, window=60):
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://unrabqyebygfqddfxqpx.supabase.co")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SUPABASE_REST = SUPABASE_URL.rstrip("/") + "/rest/v1"
+SUPABASE_STORAGE = SUPABASE_URL.rstrip("/") + "/storage/v1"
 _HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
     "Authorization": "Bearer " + SUPABASE_SERVICE_KEY,
@@ -415,6 +418,31 @@ def add_comment(post_id):
     return jsonify({"status": "ok", "comment": row})
 
 
+@app.route("/api/comments/<int:comment_id>", methods=["PATCH"])
+@rate_limit(limit=20, window=60)
+def update_comment(comment_id):
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    text = (data.get("text") or "").strip()
+    if not user:
+        return jsonify({"error": "Требуется авторизация"}), 401
+    if not text:
+        return jsonify({"error": "Пустой комментарий"}), 400
+    if len(text) > 3000:
+        return jsonify({"error": "Комментарий не длиннее 3000 символов"}), 400
+    if contains_profanity(text):
+        return jsonify({"error": "Комментарий содержит нецензурные выражения"}), 400
+
+    comments = db_select("comments", params={"select": "author", "id": f"eq.{comment_id}"})
+    if not comments:
+        return jsonify({"error": "Комментарий не найден"}), 404
+    if comments[0]["author"] != user:
+        return jsonify({"error": "Можно редактировать только свой комментарий"}), 403
+
+    db_update("comments", {"text": text}, "id", comment_id)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/comments/<int:comment_id>", methods=["DELETE"])
 def delete_comment(comment_id):
     data = request.json or {}
@@ -435,6 +463,46 @@ def delete_comment(comment_id):
         db_delete("comments", "id", comment_id)
         return jsonify({"status": "ok"})
     return jsonify({"error": "Нет прав на удаление комментария"}), 403
+
+
+@app.route("/api/upload", methods=["POST"])
+@rate_limit(limit=30, window=60)  # не больше 30 загрузок файлов в минуту
+def upload_image():
+    """Принимает base64-изображение, загружает в Supabase Storage, возвращает публичный URL."""
+    data = request.json or {}
+    base64_data = data.get("image") or ""
+    if not base64_data:
+        return jsonify({"error": "Нет данных изображения"}), 400
+    if not base64_data.startswith("data:image/"):
+        return jsonify({"error": "Недопустимый формат изображения"}), 400
+
+    try:
+        header, b64 = base64_data.split(",", 1)
+        image_bytes = binascii.a2b_base64(b64)
+    except Exception:
+        return jsonify({"error": "Некорректная кодировка изображения"}), 400
+
+    # проверка размера (≤ 4 МБ) и типа
+    if len(image_bytes) > 4 * 1024 * 1024:
+        return jsonify({"error": "Файл больше 4 МБ"}), 400
+    mime = header.split(";")[0].split(":")[1] if ":" in header.split(";")[0] else "image/jpeg"
+    ext = "jpg" if "jpeg" in mime else ("png" if "png" in mime else ("webp" if "webp" in mime else "jpg"))
+
+    fname = f"{uuid.uuid4().hex}.{ext}"
+    storage_headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": "Bearer " + SUPABASE_SERVICE_KEY,
+        "Content-Type": mime,
+    }
+    up = requests.post(
+        f"{SUPABASE_STORAGE}/object/images/{fname}",
+        headers=storage_headers, data=image_bytes, timeout=30,
+    )
+    if up.status_code not in (200, 201):
+        return jsonify({"error": "Не удалось загрузить файл"}), 500
+
+    public_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/images/{fname}"
+    return jsonify({"status": "ok", "url": public_url})
 
 
 if __name__ == "__main__":

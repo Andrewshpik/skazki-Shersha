@@ -635,6 +635,15 @@
             });
         }
 
+        // Загрузка base64-изображения на сервер, возвращает URL в Storage
+        async function uploadImage(base64Data) {
+            const data = await api('/api/upload', {
+                method: 'POST',
+                body: JSON.stringify({ image: base64Data })
+            });
+            return data.url;
+        }
+
         async function api(path, options = {}) {
             const res = await fetch(API_BASE + path, {
                 headers: { 'Content-Type': 'application/json' },
@@ -931,8 +940,9 @@
             if (!file) return;
             try {
                 const b64 = await compressImage(file, 400, 0.7);
-                userData.avatar = b64;
-                await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, avatar: b64 }) });
+                const url = await uploadImage(b64);
+                userData.avatar = url;
+                await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, avatar: url }) });
                 persistUser(); showToast('Аватар обновлен!');
             } catch (err) { showToast(err.message, true); }
         });
@@ -1163,7 +1173,9 @@
         document.getElementById('postImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                compressImage(file).then(b64 => { currentPostImageBase64 = b64; showToast('Картинка прикреплена (сжата)!'); })
+                compressImage(file)
+                    .then(b64 => uploadImage(b64))
+                    .then(url => { currentPostImageBase64 = url; showToast('Картинка загружена!'); })
                     .catch(err => showToast(err.message, true));
             } else { currentPostImageBase64 = null; }
         });
@@ -1215,11 +1227,14 @@
         document.getElementById('commentImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                compressImage(file).then(b64 => {
-                    currentCommentImageBase64 = b64;
-                    commentImagePreview.src = b64;
-                    commentImagePreview.style.display = 'inline-block';
-                }).catch(err => showToast(err.message, true));
+                compressImage(file)
+                    .then(b64 => uploadImage(b64))
+                    .then(url => {
+                        currentCommentImageBase64 = url;
+                        commentImagePreview.src = url;
+                        commentImagePreview.style.display = 'inline-block';
+                    })
+                    .catch(err => showToast(err.message, true));
             } else {
                 currentCommentImageBase64 = null;
                 commentImagePreview.style.display = 'none';
@@ -1237,7 +1252,11 @@
                     div.className = 'comment-item';
                     
                     const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" onclick="openImageModal('${c.image}')">` : '';
-                    const deleteBtn = (userData.name && c.author === userData.name && !userData.isGuest)
+                    const own = userData.name && c.author === userData.name && !userData.isGuest;
+                    const editBtn = own
+                        ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий">✏️</button>`
+                        : '';
+                    const deleteBtn = own
                         ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий">🗑️</button>`
                         : '';
                     
@@ -1245,9 +1264,10 @@
                         <div class="comment-header">
                             <span class="comment-author">${escapeHTML(c.author)}</span>
                             <span>${formatDate(c.date)}</span>
+                            ${editBtn}
                             ${deleteBtn}
                         </div>
-                        <div class="comment-text">${escapeHTML(c.text)}</div>
+                        <div class="comment-text" data-cid="${c.id}">${escapeHTML(c.text)}</div>
                         ${imageHTML}
                     `;
                     commentsList.appendChild(div);
@@ -1278,6 +1298,19 @@
                 showToast('Комментарий добавлен!');
             } catch (e) { showToast(e.message, true); }
         });
+
+        window.editComment = async function(commentId) {
+            const newText = window.prompt('Изменить комментарий:', '');
+            if (newText === null) return; // отмена
+            const text = newText.trim();
+            if (!text) { showToast('Пустой комментарий', true); return; }
+            try {
+                await api('/api/comments/' + commentId, { method: 'PATCH', body: JSON.stringify({ user: userData.name, text }) });
+                await loadPosts();
+                if (posts[currentPostIndexForComments]) renderComments();
+                showToast('Комментарий обновлён');
+            } catch (e) { showToast(e.message, true); }
+        };
 
         window.deleteComment = async function(commentId) {
             if (!window.confirm('Удалить этот комментарий?')) return;
