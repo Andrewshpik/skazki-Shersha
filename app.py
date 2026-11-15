@@ -10,12 +10,30 @@ CORS(app)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
+# --- Лёгкий rate limiting по IP (простая in-memory реализация) ---
+from collections import defaultdict, deque
+_ratelimit_slots = defaultdict(list)
+
+
+def rate_limit(limit=60, window=60):
+    """Разрешает не более `limit` вызовов с одного IP за `window` секунд."""
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '0.0.0.0').split(',')[0].strip()
+            now = time.time()
+            slots = _ratelimit_slots[ip]
+            slots[:] = [t for t in slots if now - t < window]
+            if len(slots) >= limit:
+                return jsonify({"error": "Слишком много запросов, подождите немного"}), 429
+            slots.append(now)
+            return fn(*args, **kwargs)
+        wrapper.__name__ = fn.__name__
+        return wrapper
+    return decorator
+
 # --- Supabase подключение ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://unrabqyebygfqddfxqpx.supabase.co")
-SUPABASE_SERVICE_KEY = os.environ.get(
-    "SUPABASE_SERVICE_KEY",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVucmFicXllYnlnZnFkZGZ4cXB4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5NDY5OTQ3NSwiZXhwIjoyMTEwMjc1NDc1fQ.WNiXJheRxtlfdpp-BiBmrpgWSU2rXPyXONYg098iv0E"
-)
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 SUPABASE_REST = SUPABASE_URL.rstrip("/") + "/rest/v1"
 _HEADERS = {
     "apikey": SUPABASE_SERVICE_KEY,
@@ -73,6 +91,25 @@ def verify_password(password, stored):
         return False
 
 
+# --- Фильтр нецензурной лексики ---
+PROFANITY_WORDS = tuple([
+    "блядь", "бляд", "хуй", "хуя", "хуе", "пизд", "ебать", "ебал", "ебет",
+    "ебан", "нахуй", "оху", "заеб", "сука", "бля", "пиздец", "пизде",
+    "гандон", "мудак", "мудил", "мудозвон", "пидор", "уёбок", "ёб", "ебл",
+    "шлюха", "проститут", "разъеб", "выеб", "хуета", "хуйня",
+])
+
+
+def contains_profanity(text):
+    if not text:
+        return False
+    low = text.lower()
+    for w in PROFANITY_WORDS:
+        if w in low:
+            return True
+    return False
+
+
 # --- Хранение сессий Telegram (код -> пользователь) ---
 sessions = {}
 
@@ -115,6 +152,7 @@ def check_auth():
 
 # --- Регистрация ---
 @app.route("/api/register", methods=["POST"])
+@rate_limit(limit=10, window=300)  # не больше 10 регистраций с одного IP за 5 минут
 def register():
     data = request.json or {}
     name = (data.get("name") or "").strip()
@@ -123,6 +161,12 @@ def register():
 
     if not name or not nickname or not password:
         return jsonify({"error": "Заполни все поля!"}), 400
+    if len(name) > 30:
+        return jsonify({"error": "Имя не длиннее 30 символов"}), 400
+    if len(nickname) > 30:
+        return jsonify({"error": "Ник не длиннее 30 символов"}), 400
+    if len(password) < 4 or len(password) > 64:
+        return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
 
     existing = db_select("profiles", params={"select": "name"})
     for p in existing:
@@ -145,6 +189,7 @@ def register():
 
 # --- Вход ---
 @app.route("/api/login", methods=["POST"])
+@rate_limit(limit=20, window=60)  # попыток входа в минуту с одного IP
 def login():
     data = request.json or {}
     name = (data.get("name") or "").strip()
@@ -264,6 +309,7 @@ def list_posts():
 
 
 @app.route("/api/posts", methods=["POST"])
+@rate_limit(limit=10, window=60)  # не больше 10 постов в минуту с одного IP
 def create_post():
     data = request.json or {}
     title = (data.get("title") or "").strip()
@@ -272,18 +318,29 @@ def create_post():
     image = data.get("image") or None
     if not title or not text or not author:
         return jsonify({"error": "Заполни заголовок, текст и автора!"}), 400
+    if len(title) > 200:
+        return jsonify({"error": "Заголовок не длиннее 200 символов"}), 400
+    if len(text) > 20000:
+        return jsonify({"error": "Текст не длиннее 20 000 символов"}), 400
+    if contains_profanity(title) or contains_profanity(text):
+        return jsonify({"error": "Текст содержит нецензурные выражения"}), 400
     row = db_insert("posts", {"title": title, "text": text, "author": author,
                               "image": image, "likes": 0})[0]
     return jsonify({"status": "ok", "post": row})
 
 
 @app.route("/api/posts/<int:post_id>", methods=["PATCH"])
+@rate_limit(limit=20, window=60)  # не больше 20 редактирований поста в минуту
 def update_post(post_id):
     data = request.json or {}
     payload = {}
     if "title" in data: payload["title"] = (data.get("title") or "").strip()
     if "text" in data: payload["text"] = (data.get("text") or "").strip()
     if "image" in data: payload["image"] = data.get("image") or None
+    if "title" in payload and len(payload["title"]) > 200:
+        return jsonify({"error": "Заголовок не длиннее 200 символов"}), 400
+    if "text" in payload and len(payload["text"]) > 20000:
+        return jsonify({"error": "Текст не длиннее 20 000 символов"}), 400
     if not payload:
         return jsonify({"error": "Нет данных для обновления"}), 400
     db_update("posts", payload, "id", post_id)
@@ -315,6 +372,7 @@ def delete_post(post_id):
 
 # --- Лайки ---
 @app.route("/api/posts/<int:post_id>/like", methods=["POST"])
+@rate_limit(limit=30, window=60)  # не больше 30 лайков в минуту с одного IP
 def toggle_like(post_id):
     data = request.json or {}
     user = (data.get("user") or "").strip()
@@ -340,6 +398,7 @@ def list_comments(post_id):
 
 
 @app.route("/api/posts/<int:post_id>/comments", methods=["POST"])
+@rate_limit(limit=20, window=60)  # не больше 20 комментариев в минуту с одного IP
 def add_comment(post_id):
     data = request.json or {}
     author = (data.get("author") or "").strip()
@@ -347,6 +406,10 @@ def add_comment(post_id):
     image = data.get("image") or None
     if not author and not text and not image:
         return jsonify({"error": "Пустой комментарий"}), 400
+    if len(text) > 3000:
+        return jsonify({"error": "Комментарий не длиннее 3000 символов"}), 400
+    if contains_profanity(text):
+        return jsonify({"error": "Комментарий содержит нецензурные выражения"}), 400
     row = db_insert("comments", {"post_id": post_id, "author": author or "Аноним",
                                   "text": text, "image": image})[0]
     return jsonify({"status": "ok", "comment": row})
