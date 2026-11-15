@@ -500,6 +500,49 @@
     </div>
 
     <script>
+        // --- НАСТРОЙКИ API (бэкенд на Netrun) ---
+        const API_BASE = 'https://shersh-auth.de1.netrun.io';
+
+        function escapeHTML(str) {
+            return String(str == null ? '' : str)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        async function api(path, options = {}) {
+            const res = await fetch(API_BASE + path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || ('Ошибка ' + res.status));
+            return data;
+        }
+
+        let posts = [];
+        let usersMap = {}; // name -> profile (для аватаров/ников)
+
+        async function loadPosts() {
+            try {
+                const rows = await api('/api/posts');
+                posts = rows.map(r => ({
+                    id: r.id, title: r.title, text: r.text, author: r.author,
+                    date: r.date, image: r.image, likes: r.likes || 0,
+                    comments: r.comments || [], isLiked: likedSet.has(r.id)
+                }));
+                renderPosts();
+            } catch (e) {
+                showToast('Не удалось загрузить истории: ' + e.message, true);
+            }
+        }
+
+        async function loadProfiles() {
+            try {
+                const profiles = await api('/api/profiles');
+                profiles.forEach(p => usersMap[p.name] = p);
+            } catch (e) { /* профили подтягиваются по мере необходимости */ }
+        }
+
         // --- ГЛАЗИК ДЛЯ ПАРОЛЯ ---
         function togglePasswordVisibility(inputId, iconElement) {
             const input = document.getElementById(inputId);
@@ -582,17 +625,18 @@
             document.getElementById('wordCount').textContent = `Слов: ${wordCount}`;
         }
 
-        let usersDB = JSON.parse(localStorage.getItem('shersh_users_db')) || [];
-        if (!usersDB.find(u => u.nickname.toLowerCase() === '@шерш')) {
-            usersDB.push({ name: 'Шерш', nickname: '@Шерш', password: 'shersh123' });
-            saveUsersDB();
-        }
-
-        function saveUsersDB() { localStorage.setItem('shersh_users_db', JSON.stringify(usersDB)); }
-
+        // Сессия: только для запоминания, кто залогинен (не источник данных)
         let userData = JSON.parse(localStorage.getItem('shersh_user')) || {
             name: '', nickname: '', bio: '', avatar: '', isGuest: false
         };
+
+        let likedSet = new Set();
+
+        function persistUser() {
+            localStorage.setItem('shersh_user', JSON.stringify(userData));
+            updateHeaderUI(); updateProfileUI();
+            if (userData.name && !userData.isGuest) updateLikedSet();
+        }
 
         const loginModal = document.getElementById('loginModal');
         const editProfileModal = document.getElementById('editProfileModal');
@@ -610,39 +654,37 @@
             }
         }
 
-        document.getElementById('registerBtn').addEventListener('click', () => {
+        document.getElementById('registerBtn').addEventListener('click', async () => {
             const name = document.getElementById('regNameInput').value.trim();
             const nick = document.getElementById('regNickInput').value.trim();
             const pass = document.getElementById('regPassInput').value.trim();
 
             if (!name || !nick || !pass) { showToast('Заполни все поля!', true); return; }
-            if (usersDB.some(u => u.name.toLowerCase() === name.toLowerCase())) { showToast('Это имя уже занято!', true); return; }
-            if (usersDB.some(u => u.nickname.toLowerCase() === nick.toLowerCase())) { showToast('Этот ник уже занят!', true); return; }
 
-            const newUser = { name, nickname: nick, password: pass, bio: '', avatar: '' };
-            usersDB.push(newUser); saveUsersDB();
-            userData = { name, nickname: nick, bio: '', avatar: '' };
-            saveUserData(); loginModal.style.display = 'none';
-            showToast(`Добро пожаловать, ${name}!`);
+            try {
+                const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, nickname: nick, password: pass }) });
+                userData = { name: data.user.name, nickname: data.user.nickname, bio: '', avatar: '' };
+                persistUser(); loginModal.style.display = 'none';
+                showToast(`Добро пожаловать, ${name}!`);
+            } catch (e) { showToast(e.message, true); }
         });
 
-        document.getElementById('loginBtn').addEventListener('click', () => {
+        document.getElementById('loginBtn').addEventListener('click', async () => {
             const name = document.getElementById('loginNameInput').value.trim();
             const pass = document.getElementById('loginPassInput').value.trim();
 
             if (!name || !pass) { showToast('Введи имя и пароль!', true); return; }
-            const user = usersDB.find(u => u.name.toLowerCase() === name.toLowerCase());
-            if (!user) { showToast('Пользователь не найден!', true); return; }
-            if (user.password !== pass) { showToast('Неверный пароль!', true); return; }
-
-            userData = { name: user.name, nickname: user.nickname, bio: user.bio || '', avatar: user.avatar || '' };
-            saveUserData(); loginModal.style.display = 'none';
-            showToast(`С возвращением, ${user.name}!`);
+            try {
+                const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ name, password: pass }) });
+                userData = { name: data.user.name, nickname: data.user.nickname, bio: data.user.bio, avatar: data.user.avatar };
+                persistUser(); loginModal.style.display = 'none';
+                showToast(`С возвращением, ${userData.name}!`);
+            } catch (e) { showToast(e.message, true); }
         });
 
         document.getElementById('guestBtn').addEventListener('click', () => {
             userData = { name: 'Гость', nickname: '@guest', bio: 'Просто зашел посмотреть', avatar: '', isGuest: true };
-            saveUserData(); loginModal.style.display = 'none';
+            persistUser(); loginModal.style.display = 'none';
             showToast('Вы вошли как Гость');
         });
 
@@ -663,19 +705,14 @@
                             document.getElementById('waitingMsg').style.display = 'none';
                             userData.name = data.user.first_name;
                             userData.nickname = '@' + (data.user.username || 'user');
-                            localStorage.setItem('shersh_user', JSON.stringify(userData));
-                            loginModal.style.display = 'none'; updateHeaderUI();
+                            persistUser();
+                            loginModal.style.display = 'none';
                             showToast(`Добро пожаловать, ${data.user.first_name}!`);
                             setTimeout(() => location.reload(), 1000);
                         }
                     }).catch(err => console.error("Ошибка проверки:", err));
             }, 2000);
         });
-
-        function saveUserData() {
-            localStorage.setItem('shersh_user', JSON.stringify(userData));
-            updateHeaderUI(); updateProfileUI();
-        }
 
         function updateHeaderUI() {
             const btn = document.getElementById('headerProfileBtn');
@@ -723,10 +760,10 @@
         }
 
         window.openAuthorProfile = function(authorName) {
-            const author = usersDB.find(u => u.name === authorName);
-            
+            const author = usersMap[authorName];
+
             document.getElementById('otherProfileNameDisplay').textContent = authorName;
-            document.getElementById('otherProfileNickDisplay').textContent = author ? author.nickname : '@unknown';
+            document.getElementById('otherProfileNickDisplay').textContent = author && author.nickname ? author.nickname : '@unknown';
             document.getElementById('otherProfileBioDisplay').textContent = author && author.bio ? author.bio : 'О себе пока ничего не написано...';
 
             const avatarImg = document.getElementById('otherAvatarImage');
@@ -747,18 +784,18 @@
             showPage('other');
         };
 
-        document.getElementById('avatarInput').addEventListener('change', function(e) {
+        document.getElementById('avatarInput').addEventListener('change', async function(e) {
             const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    userData.avatar = event.target.result;
-                    const userIndex = usersDB.findIndex(u => u.name === userData.name);
-                    if (userIndex !== -1) { usersDB[userIndex].avatar = userData.avatar; saveUsersDB(); }
-                    saveUserData(); showToast('Аватар обновлен!');
-                };
-                reader.readAsDataURL(file);
-            }
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                userData.avatar = event.target.result;
+                try {
+                    await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, avatar: userData.avatar }) });
+                    persistUser(); showToast('Аватар обновлен!');
+                } catch (err) { showToast(err.message, true); }
+            };
+            reader.readAsDataURL(file);
         });
 
         window.openEditProfile = function(focusField) {
@@ -775,31 +812,20 @@
         document.getElementById('editProfileBtn').addEventListener('click', () => openEditProfile(null));
         document.getElementById('cancelEditBtn').addEventListener('click', () => editProfileModal.style.display = 'none');
 
-        document.getElementById('saveEditBtn').addEventListener('click', () => {
+        document.getElementById('saveEditBtn').addEventListener('click', async () => {
             let newName = document.getElementById('editNameInput').value.trim();
             let newNick = document.getElementById('editNicknameInput').value.trim();
             let newBio = document.getElementById('editBioInput').value.trim();
 
             if (newNick && !newNick.startsWith('@')) newNick = '@' + newNick;
-            let hasError = false;
 
-            if (newName.toLowerCase() !== userData.name.toLowerCase()) {
-                if (usersDB.some(u => u.name.toLowerCase() === newName.toLowerCase())) { showToast('Это имя уже занято!', true); hasError = true; }
-            }
-            if (newNick.toLowerCase() !== userData.nickname.toLowerCase()) {
-                if (usersDB.some(u => u.nickname.toLowerCase() === newNick.toLowerCase())) { showToast('Этот ник уже занят!', true); hasError = true; }
-            }
-
-            if (!hasError) {
-                const userIndex = usersDB.findIndex(u => u.name === userData.name);
-                if (userIndex !== -1) {
-                    usersDB[userIndex].name = newName; usersDB[userIndex].nickname = newNick; usersDB[userIndex].bio = newBio;
-                    saveUsersDB();
-                }
+            try {
+                await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, name: newName, nickname: newNick, bio: newBio }) });
                 userData.name = newName; userData.nickname = newNick; userData.bio = newBio;
-                saveUserData(); editProfileModal.style.display = 'none';
+                usersMap[newName] = { name: newName, nickname: newNick, bio: newBio, avatar: userData.avatar };
+                persistUser(); editProfileModal.style.display = 'none';
                 showToast('Профиль успешно обновлен!');
-            }
+            } catch (e) { showToast(e.message, true); }
         });
 
         document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
@@ -807,10 +833,12 @@
 
         document.getElementById('deleteAccountBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'flex'; });
         document.getElementById('cancelDeleteBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'none'; });
-        document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
-            usersDB = usersDB.filter(u => u.name !== userData.name); saveUsersDB();
-            localStorage.removeItem('shersh_user'); deleteAccountModal.style.display = 'none';
-            showToast('Аккаунт удален'); setTimeout(() => location.reload(), 1500);
+        document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+            try {
+                await api('/api/profile', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
+                localStorage.removeItem('shersh_user'); deleteAccountModal.style.display = 'none';
+                showToast('Аккаунт удален'); setTimeout(() => location.reload(), 1500);
+            } catch (e) { showToast(e.message, true); }
         });
 
         const themeToggleBtn = document.getElementById('themeToggle');
@@ -829,18 +857,6 @@
             const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
             const hh = String(date.getHours()).padStart(2, '0'); const mm = String(date.getMinutes()).padStart(2, '0');
             return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()} в ${hh}:${mm}`;
-        }
-
-        let posts = JSON.parse(localStorage.getItem('shersh_posts'));
-        if (!posts) {
-            posts = [
-                {
-                    id: 1, title: 'Добро пожаловать на наш сайт!', author: 'Андрей', date: new Date().toISOString(),
-                    text: 'Привет! Это первый пост на нашем сайте. Здесь мы будем делиться сказками, историями из жизни, театральными закулисьями и всем, что захочется.\n\nШерш уже надел свою корону и готов читать ваши истории.',
-                    likes: 12, isLiked: false, image: null, comments: [{ author: 'Шерш', date: new Date().toISOString(), text: 'Ура! Мой сайт работает!', image: null }]
-                }
-            ];
-            saveData();
         }
 
         const postsContainer = document.getElementById('posts-container');
@@ -865,11 +881,12 @@
                 const dateStr = formatDate(post.date);
                 const commentCount = post.comments ? post.comments.length : 0;
                 
-                const authorData = usersDB.find(u => u.name === post.author);
+                const authorData = usersMap[post.author];
                 const avatarSrc = authorData && authorData.avatar ? authorData.avatar : null;
+                const escAuthor = escapeHTML(post.author);
                 const avatarHTML = avatarSrc 
-                    ? `<img src="${avatarSrc}" class="post-avatar" onclick="openAuthorProfile('${post.author}')">` 
-                    : `<div class="post-avatar" onclick="openAuthorProfile('${post.author}')">👤</div>`;
+                    ? `<img src="${avatarSrc}" class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>` 
+                    : `<div class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>👤</div>`;
 
                 const isAuthor = userData.name === post.author;
                 const controlsHTML = isAuthor ? `
@@ -883,17 +900,17 @@
 
                 postElement.innerHTML = `
                     <div class="post-header-row">
-                        <h2>${post.title}</h2>
+                        <h2>${escapeHTML(post.title)}</h2>
                         ${controlsHTML}
                     </div>
                     <div class="post-meta">
                         ${avatarHTML}
-                        <span>Автор: <a href="#" class="author-name" onclick="openAuthorProfile('${post.author}')">${post.author}</a></span>
+                        <span>Автор: <a href="#" class="author-name" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>${escAuthor}</a></span>
                         <span>•</span>
                         <span>${dateStr}</span>
                     </div>
                     ${imageHTML}
-                    <div class="post-content"><p>${post.text}</p></div>
+                    <div class="post-content"><p>${escapeHTML(post.text)}</p></div>
                     <div class="post-actions">
                         <button class="action-btn ${post.isLiked ? 'liked' : ''}" onclick="toggleLike(${index})">
                             👍 Нравится (<span>${post.likes}</span>)
@@ -917,10 +934,16 @@
             });
         }
 
-        window.toggleLike = function(index) {
-            posts[index].isLiked = !posts[index].isLiked;
-            posts[index].likes += posts[index].isLiked ? 1 : -1;
-            saveData(); renderPosts();
+        window.toggleLike = async function(index) {
+            const post = posts[index];
+            if (!userData.name || userData.isGuest) { showToast('Гости не могут ставить лайки!', true); return; }
+            try {
+                const data = await api('/api/posts/' + post.id + '/like', { method: 'POST', body: JSON.stringify({ user: userData.name }) });
+                post.isLiked = (data.status === 'liked');
+                post.likes = data.likes;
+                if (post.isLiked) likedSet.add(post.id); else likedSet.delete(post.id);
+                renderPosts();
+            } catch (e) { showToast(e.message, true); }
         };
 
         window.editPost = function(id) {
@@ -937,9 +960,12 @@
             updateWordCount(); postModal.style.display = 'flex';
         };
 
-        window.deletePost = function(id) {
-            posts = posts.filter(p => p.id !== id); saveData(); renderPosts();
-            showToast('История удалена');
+        window.deletePost = async function(id) {
+            try {
+                await api('/api/posts/' + id, { method: 'DELETE' });
+                posts = posts.filter(p => p.id !== id); renderPosts();
+                showToast('История удалена');
+            } catch (e) { showToast(e.message, true); }
         };
 
         document.getElementById('postImageInput').addEventListener('change', function(e) {
@@ -964,23 +990,22 @@
 
         document.getElementById('cancelBtn').addEventListener('click', () => { postModal.style.display = 'none'; });
 
-        document.getElementById('submitPostBtn').addEventListener('click', () => {
+        document.getElementById('submitPostBtn').addEventListener('click', async () => {
             const title = document.getElementById('postTitle').value.trim();
             const text = document.getElementById('postText').value.trim();
             if (!title || !text) { showToast('Заполни заголовок и текст!', true); return; }
 
-            if (editingPostId) {
-                const post = posts.find(p => p.id === editingPostId);
-                if (post) { post.title = title; post.text = text; post.image = currentPostImageBase64; }
-                showToast('История обновлена!');
-            } else {
-                const newPost = {
-                    id: Date.now(), title: title, author: userData.name, date: new Date().toISOString(),
-                    text: text, likes: 0, isLiked: false, image: currentPostImageBase64, comments: []
-                };
-                posts.unshift(newPost); showToast('История опубликована!');
-            }
-            saveData(); renderPosts(); postModal.style.display = 'none';
+            try {
+                if (editingPostId) {
+                    await api('/api/posts/' + editingPostId, { method: 'PATCH', body: JSON.stringify({ title, text, image: currentPostImageBase64 }) });
+                    showToast('История обновлена!');
+                } else {
+                    await api('/api/posts', { method: 'POST', body: JSON.stringify({ title, text, author: userData.name, image: currentPostImageBase64 }) });
+                    showToast('История опубликована!');
+                }
+                postModal.style.display = 'none';
+                await loadPosts();
+            } catch (e) { showToast(e.message, true); }
         });
 
         // --- КОММЕНТАРИИ ---
@@ -1026,10 +1051,10 @@
                     
                     div.innerHTML = `
                         <div class="comment-header">
-                            <span class="comment-author">${c.author}</span>
+                            <span class="comment-author">${escapeHTML(c.author)}</span>
                             <span>${formatDate(c.date)}</span>
                         </div>
-                        <div class="comment-text">${c.text}</div>
+                        <div class="comment-text">${escapeHTML(c.text)}</div>
                         ${imageHTML}
                     `;
                     commentsList.appendChild(div);
@@ -1043,29 +1068,42 @@
 
         document.getElementById('closeCommentsBtn').addEventListener('click', () => { commentsModal.style.display = 'none'; });
 
-        document.getElementById('submitCommentBtn').addEventListener('click', () => {
+        document.getElementById('submitCommentBtn').addEventListener('click', async () => {
             if(!userData.name || userData.isGuest) { showToast('Гости не могут писать комментарии!', true); return; }
             const text = commentInput.value.trim();
             if (!text && !currentCommentImageBase64) return; 
 
-            const newComment = { 
-                author: userData.name, 
-                date: new Date().toISOString(), 
-                text: text || '📷 Фото', 
-                image: currentCommentImageBase64 
-            };
-            
-            posts[currentPostIndexForComments].comments.push(newComment);
-            saveData(); renderPosts(); renderComments();
-            commentInput.value = ''; currentCommentImageBase64 = null;
-            commentImagePreview.style.display = 'none';
-            showToast('Комментарий добавлен!');
+            const post = posts[currentPostIndexForComments];
+            try {
+                await api('/api/posts/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({
+                    author: userData.name, text: text || '📷 Фото', image: currentCommentImageBase64
+                }) });
+                await loadPosts();
+                if (posts[currentPostIndexForComments]) renderComments();
+                commentInput.value = ''; currentCommentImageBase64 = null;
+                commentImagePreview.style.display = 'none';
+                showToast('Комментарий добавлен!');
+            } catch (e) { showToast(e.message, true); }
         });
 
-        function saveData() { localStorage.setItem('shersh_posts', JSON.stringify(posts)); }
+        async function updateLikedSet() {
+            if (!userData.name || userData.isGuest) return;
+            try {
+                const ids = await api('/api/liked?user=' + encodeURIComponent(userData.name));
+                likedSet = new Set(ids);
+                posts.forEach(p => p.isLiked = likedSet.has(p.id));
+                renderPosts();
+            } catch (e) {}
+        }
 
-        checkAuth();
-        renderPosts();
+        // --- ИНИЦИАЛИЗАЦИЯ ---
+        async function init() {
+            await loadProfiles();
+            await loadPosts();
+            checkAuth();
+            if (userData.name && !userData.isGuest) updateLikedSet();
+        }
+        init();
     </script>
 
 </body>
