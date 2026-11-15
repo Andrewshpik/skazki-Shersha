@@ -46,6 +46,62 @@
             --input-bg: #16213e;
         }
 
+        /* Тема: Лавандовая */
+        [data-theme="lavender"] {
+            --bg-color: #f6f0fa;
+            --text-color: #3c2a4d;
+            --header-bg: #ffffff;
+            --card-bg: #ffffff;
+            --gold-accent: #a78bfa;
+            --gold-hover: #8b5cf6;
+            --shadow: 0 4px 12px rgba(139,92,246,0.12);
+            --border-color: #e6def2;
+            --comment-bg: #faf7fd;
+            --input-bg: #ffffff;
+        }
+
+        /* Тема: Мятная */
+        [data-theme="mint"] {
+            --bg-color: #ecf7f3;
+            --text-color: #24423a;
+            --header-bg: #ffffff;
+            --card-bg: #ffffff;
+            --gold-accent: #2dd4a7;
+            --gold-hover: #10b981;
+            --shadow: 0 4px 12px rgba(16,185,129,0.12);
+            --border-color: #d8efdf;
+            --comment-bg: #f3fbf7;
+            --input-bg: #ffffff;
+        }
+
+        /* Тема: Небесно-синяя */
+        [data-theme="skyblue"] {
+            --bg-color: #eef5fb;
+            --text-color: #1e3a5f;
+            --header-bg: #ffffff;
+            --card-bg: #ffffff;
+            --gold-accent: #38bdf8;
+            --gold-hover: #0ea5e9;
+            --shadow: 0 4px 12px rgba(14,165,233,0.12);
+            --border-color: #d8e8f5;
+            --comment-bg: #f2f8fd;
+            --input-bg: #ffffff;
+        }
+
+        /* Тема: Розовая */
+        [data-theme="rose"] {
+            --bg-color: #fdf0f3;
+            --text-color: #54252f;
+            --header-bg: #ffffff;
+            --card-bg: #ffffff;
+            --gold-accent: #fb7185;
+            --gold-hover: #f43f5e;
+            --shadow: 0 4px 12px rgba(244,63,94,0.12);
+            --border-color: #f7dce2;
+            --comment-bg: #fef5f7;
+            --input-bg: #ffffff;
+        }
+
         * { box-sizing: border-box; }
 
         body {
@@ -98,7 +154,20 @@
         .btn:hover { background-color: var(--gold-hover); transform: scale(1.05); }
 
         .theme-toggle, .logout-icon { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 5px; transition: transform 0.2s; }
-        .theme-toggle:hover, .logout-icon:hover { transform: scale(1.2) rotate(15deg); }
+        .theme-toggle:hover, .logout-icon:hover { transform: scale(1.05); }
+
+        #themeSelect {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        #themeSelect:focus { outline: none; border-color: var(--gold-accent); }
 
         .search-bar { max-width: 800px; margin: 15px auto; padding: 0 20px; }
         .search-bar input {
@@ -410,7 +479,14 @@
             <div class="header-controls">
                 <span class="user-info" id="headerProfileBtn" onclick="showPage('profile')">👋 Гость</span>
                 <button class="logout-icon" id="headerLogoutBtn" title="Выйти" style="display: none;">🚪</button>
-                <button class="theme-toggle" id="themeToggle" title="Переключить тему">🌙</button>
+                <select id="themeSelect" class="theme-toggle" title="Выбрать тему">
+                    <option value="light">🌙 Светлая</option>
+                    <option value="dark">🌚 Тёмная</option>
+                    <option value="lavender">💜 Лавандовая</option>
+                    <option value="mint">🌿 Мятная</option>
+                    <option value="skyblue">💙 Небесная</option>
+                    <option value="rose">🌹 Розовая</option>
+                </select>
                 <button class="btn" id="addPostBtn">Добавить историю</button>
             </div>
         </div>
@@ -691,7 +767,7 @@
 
         // Сессия: только для запоминания, кто залогинен (не источник данных)
         let userData = JSON.parse(localStorage.getItem('shersh_user')) || {
-            name: '', nickname: '', bio: '', avatar: '', isGuest: false
+            name: '', nickname: '', bio: '', avatar: '', isGuest: false, is_admin: false
         };
 
         let likedSet = new Set();
@@ -727,7 +803,7 @@
 
             try {
                 const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, nickname: nick, password: pass }) });
-                userData = { name: data.user.name, nickname: data.user.nickname, bio: '', avatar: '' };
+                userData = { name: data.user.name, nickname: data.user.nickname, bio: '', avatar: '', is_admin: !!data.user.is_admin };
                 persistUser(); loginModal.style.display = 'none';
                 showToast(`Добро пожаловать, ${name}!`);
             } catch (e) { showToast(e.message, true); }
@@ -740,7 +816,7 @@
             if (!name || !pass) { showToast('Введи имя и пароль!', true); return; }
             try {
                 const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ name, password: pass }) });
-                userData = { name: data.user.name, nickname: data.user.nickname, bio: data.user.bio, avatar: data.user.avatar };
+                userData = { name: data.user.name, nickname: data.user.nickname, bio: data.user.bio, avatar: data.user.avatar, is_admin: !!data.user.is_admin };
                 persistUser(); loginModal.style.display = 'none';
                 showToast(`С возвращением, ${userData.name}!`);
             } catch (e) { showToast(e.message, true); }
@@ -902,15 +978,20 @@
             } catch (e) { showToast(e.message, true); }
         });
 
-        const themeToggleBtn = document.getElementById('themeToggle');
+        const themeSelect = document.getElementById('themeSelect');
         const body = document.body;
-        if (localStorage.getItem('theme') === 'dark') { body.setAttribute('data-theme', 'dark'); themeToggleBtn.textContent = '☀️'; }
-        themeToggleBtn.addEventListener('click', () => {
-            if (body.getAttribute('data-theme') === 'dark') {
-                body.removeAttribute('data-theme'); themeToggleBtn.textContent = '🌙'; localStorage.setItem('theme', 'light');
+        // применяем сохранённую тему
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme !== 'light') body.setAttribute('data-theme', savedTheme);
+        themeSelect.value = savedTheme;
+        themeSelect.addEventListener('change', () => {
+            const val = themeSelect.value;
+            if (val === 'light') {
+                body.removeAttribute('data-theme');
             } else {
-                body.setAttribute('data-theme', 'dark'); themeToggleBtn.textContent = '☀️'; localStorage.setItem('theme', 'dark');
+                body.setAttribute('data-theme', val);
             }
+            localStorage.setItem('theme', val);
         });
 
         function formatDate(dateString) {
@@ -967,13 +1048,14 @@
                     ? `<img src="${avatarSrc}" class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>` 
                     : `<div class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>👤</div>`;
 
-                const isAuthor = userData.name === post.author;
-                const controlsHTML = isAuthor ? `
+                const isAuthor = userData.name === post.author && !userData.isGuest;
+                const canDelete = isAuthor || userData.is_admin;
+                const controlsHTML = `
                     <div class="post-controls">
-                        <button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать">✏️</button>
-                        <button class="delete-post-btn" onclick="deletePost(${post.id})" title="Удалить">🗑️</button>
+                        ${isAuthor ? `<button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать">✏️</button>` : ''}
+                        ${canDelete ? `<button class="delete-post-btn" onclick="deletePost(${post.id})" title="${userData.is_admin && !isAuthor ? 'Удалить (админ)' : 'Удалить'}">🗑️</button>` : ''}
                     </div>
-                ` : '';
+                `;
 
                 const imageHTML = post.image ? `<img src="${post.image}" class="post-image" onclick="openImageModal('${post.image}')">` : '';
 
@@ -1068,7 +1150,7 @@
 
         window.deletePost = async function(id) {
             try {
-                await api('/api/posts/' + id, { method: 'DELETE' });
+                await api('/api/posts/' + id, { method: 'DELETE', body: JSON.stringify({ user: userData.name }) });
                 posts = posts.filter(p => p.id !== id);
                 localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
@@ -1198,7 +1280,7 @@
         window.deleteComment = async function(commentId) {
             if (!window.confirm('Удалить этот комментарий?')) return;
             try {
-                await api('/api/comments/' + commentId, { method: 'DELETE' });
+                await api('/api/comments/' + commentId, { method: 'DELETE', body: JSON.stringify({ user: userData.name }) });
                 await loadPosts();
                 if (posts[currentPostIndexForComments]) renderComments();
                 showToast('Комментарий удалён');

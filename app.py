@@ -140,7 +140,7 @@ def register():
         if e.response.status_code == 409:
             return jsonify({"error": "Имя или ник уже заняты!"}), 409
         raise
-    return jsonify({"status": "ok", "user": {"name": name, "nickname": nickname, "bio": "", "avatar": ""}})
+    return jsonify({"status": "ok", "user": {"name": name, "nickname": nickname, "bio": "", "avatar": "", "is_admin": False}})
 
 
 # --- Вход ---
@@ -165,13 +165,14 @@ def login():
     return jsonify({"status": "ok", "user": {
         "name": p["name"], "nickname": p.get("nickname", ""),
         "bio": p.get("bio", ""), "avatar": p.get("avatar", ""),
+        "is_admin": bool(p.get("is_admin")),
     }})
 
 
 # --- Список всех профилей (для аватаров/ников в ленте) ---
 @app.route("/api/profiles", methods=["GET"])
 def all_profiles():
-    rows = db_select("profiles", params={"select": "name,nickname,bio,avatar"})
+    rows = db_select("profiles", params={"select": "name,nickname,bio,avatar,is_admin"})
     return jsonify(rows)
 
 
@@ -185,6 +186,7 @@ def get_profile(name):
     return jsonify({
         "name": p["name"], "nickname": p.get("nickname", ""),
         "bio": p.get("bio", ""), "avatar": p.get("avatar", ""),
+        "is_admin": bool(p.get("is_admin")),
     })
 
 
@@ -290,8 +292,25 @@ def update_post(post_id):
 
 @app.route("/api/posts/<int:post_id>", methods=["DELETE"])
 def delete_post(post_id):
-    db_delete("posts", "id", post_id)
-    return jsonify({"status": "ok"})
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    # проверяем права: автор поста или админ
+    posts = db_select("posts", params={"select": "author", "id": f"eq.{post_id}"})
+    if not posts:
+        return jsonify({"error": "Пост не найден"}), 404
+    author = posts[0]["author"]
+    if not user:
+        return jsonify({"error": "Требуется авторизация"}), 401
+    if user == author:
+        db_delete("posts", "id", post_id)
+        return jsonify({"status": "ok"})
+    # проверяем, является ли пользователь админом
+    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
+    is_admin = bool(profiles and profiles[0].get("is_admin"))
+    if is_admin:
+        db_delete("posts", "id", post_id)
+        return jsonify({"status": "ok"})
+    return jsonify({"error": "Нет прав на удаление этого поста"}), 403
 
 
 # --- Лайки ---
@@ -335,8 +354,24 @@ def add_comment(post_id):
 
 @app.route("/api/comments/<int:comment_id>", methods=["DELETE"])
 def delete_comment(comment_id):
-    db_delete("comments", "id", comment_id)
-    return jsonify({"status": "ok"})
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    # проверяем: автор комментария или админ
+    comments = db_select("comments", params={"select": "author", "id": f"eq.{comment_id}"})
+    if not comments:
+        return jsonify({"error": "Комментарий не найден"}), 404
+    comment_author = comments[0]["author"]
+    if not user:
+        return jsonify({"error": "Требуется авторизация"}), 401
+    if user == comment_author:
+        db_delete("comments", "id", comment_id)
+        return jsonify({"status": "ok"})
+    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
+    is_admin = bool(profiles and profiles[0].get("is_admin"))
+    if is_admin:
+        db_delete("comments", "id", comment_id)
+        return jsonify({"status": "ok"})
+    return jsonify({"error": "Нет прав на удаление комментария"}), 403
 
 
 if __name__ == "__main__":
