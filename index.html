@@ -133,6 +133,13 @@
         .empty-feed h3 { font-size: 1.5rem; color: var(--text-color); margin-bottom: 10px; }
         .empty-feed p { font-size: 1.1rem; margin-bottom: 20px; }
 
+        .skeleton-card { background-color: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: var(--shadow); border: 1px solid var(--border-color); }
+        .skeleton-line { height: 14px; border-radius: 6px; margin-bottom: 12px; background: linear-gradient(90deg, var(--border-color) 25%, #d9d9d9 37%, var(--border-color) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; }
+        .skeleton-line.title { height: 20px; width: 60%; }
+        .skeleton-line.short { width: 40%; }
+        @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+        .loading-feed { display: none; }
+
         .post-card {
             background-color: var(--card-bg); border-radius: 12px; padding: 20px;
             margin-bottom: 20px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
@@ -239,6 +246,9 @@
         .comment-text { font-size: 0.95em; line-height: 1.4; word-break: break-word; margin-bottom: 10px; }
         
         .comment-image { width: 100%; max-height: 200px; object-fit: cover; border-radius: 6px; margin-top: 5px; border: 1px solid var(--border-color); }
+
+        .delete-comment-btn { background: none; border: none; font-size: 1rem; opacity: 0.6; cursor: pointer; padding: 0 4px; transition: opacity 0.2s, transform 0.2s; }
+        .delete-comment-btn:hover { opacity: 1; transform: scale(1.2); }
 
         .comment-image-preview { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; margin-right: 10px; border: 1px solid var(--border-color); display: none; }
 
@@ -525,6 +535,30 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
+        function compressImage(file, maxWidth = 1280, quality = 0.7) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const scale = Math.min(1, maxWidth / img.width);
+                        const w = Math.round(img.width * scale);
+                        const h = Math.round(img.height * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+                reader.readAsDataURL(file);
+            });
+        }
+
         async function api(path, options = {}) {
             const res = await fetch(API_BASE + path, {
                 headers: { 'Content-Type': 'application/json' },
@@ -537,8 +571,19 @@
 
         let posts = [];
         let usersMap = {}; // name -> profile (для аватаров/ников)
+        const POSTS_CACHE_KEY = 'shersh_posts_cache';
 
         async function loadPosts() {
+            // Показываем скелетон только если нет кеша (первый заход)
+            if (!localStorage.getItem(POSTS_CACHE_KEY)) showFeedSkeleton();
+            // Сначала показываем кешированную ленту, если есть (работает даже когда сервер Netrun спит)
+            const cached = localStorage.getItem(POSTS_CACHE_KEY);
+            if (cached) {
+                try {
+                    posts = JSON.parse(cached);
+                    renderPosts();
+                } catch (e) {}
+            }
             try {
                 const rows = await api('/api/posts');
                 posts = rows.map(r => ({
@@ -546,9 +591,12 @@
                     date: r.date, image: r.image, likes: r.likes || 0,
                     comments: r.comments || [], isLiked: likedSet.has(r.id)
                 }));
+                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
             } catch (e) {
-                showToast('Не удалось загрузить истории: ' + e.message, true);
+                if (!localStorage.getItem(POSTS_CACHE_KEY)) {
+                    showToast('Не удалось загрузить истории: ' + e.message, true);
+                }
             }
         }
 
@@ -803,15 +851,12 @@
         document.getElementById('avatarInput').addEventListener('change', async function(e) {
             const file = e.target.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async function(event) {
-                userData.avatar = event.target.result;
-                try {
-                    await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, avatar: userData.avatar }) });
-                    persistUser(); showToast('Аватар обновлен!');
-                } catch (err) { showToast(err.message, true); }
-            };
-            reader.readAsDataURL(file);
+            try {
+                const b64 = await compressImage(file, 400, 0.7);
+                userData.avatar = b64;
+                await api('/api/profile', { method: 'PATCH', body: JSON.stringify({ old_name: userData.name, avatar: b64 }) });
+                persistUser(); showToast('Аватар обновлен!');
+            } catch (err) { showToast(err.message, true); }
         });
 
         window.openEditProfile = function(focusField) {
@@ -877,6 +922,22 @@
 
         const postsContainer = document.getElementById('posts-container');
 
+        function showFeedSkeleton() {
+            postsContainer.innerHTML = `
+                <div class="skeleton-card"><div class="skeleton-line title"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                <div class="skeleton-card"><div class="skeleton-line title"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                <div class="skeleton-card"><div class="skeleton-line title"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+            `;
+        }
+
+        let postsPerPage = 5;      // сколько постов показывать за раз
+        let visibleCount = postsPerPage;
+
+        function showMorePosts() {
+            visibleCount += postsPerPage;
+            renderPosts();
+        }
+
         function renderPosts() {
             postsContainer.innerHTML = '';
             
@@ -891,7 +952,9 @@
                 return;
             }
 
-            posts.forEach((post, index) => {
+            if (visibleCount > posts.length) visibleCount = posts.length;
+
+            posts.slice(0, visibleCount).forEach((post, index) => {
                 const postElement = document.createElement('article');
                 postElement.className = 'post-card';
                 const dateStr = formatDate(post.date);
@@ -934,10 +997,23 @@
                         <button class="action-btn" onclick="openComments(${index})">
                             💬 Комментарии (${commentCount})
                         </button>
+                        <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
+                            🔗 Поделиться
+                        </button>
                     </div>
                 `;
                 postsContainer.appendChild(postElement);
             });
+
+            if (visibleCount < posts.length) {
+                const moreBtn = document.createElement('button');
+                moreBtn.className = 'btn';
+                moreBtn.textContent = 'Показать ещё (' + (posts.length - visibleCount) + ')';
+                moreBtn.style.display = 'block';
+                moreBtn.style.margin = '0 auto 20px';
+                moreBtn.onclick = showMorePosts;
+                postsContainer.appendChild(moreBtn);
+            }
         }
 
         function filterPosts() {
@@ -950,6 +1026,19 @@
             });
         }
 
+        window.sharePost = function(index) {
+            const post = posts[index];
+            if (!post) return;
+            // Попытка нативного шеринга
+            if (navigator.share) {
+                navigator.share({ title: post.title, text: post.text.slice(0, 200) }).catch(() => {});
+                return;
+            }
+            // Запасной вариант: копируем ссылку на карточку
+            const url = location.origin + location.pathname + '#post-' + post.id;
+            navigator.clipboard.writeText(url).then(() => showToast('Ссылка скопирована!')).catch(() => showToast('Не удалось скопировать', true));
+        };
+
         window.toggleLike = async function(index) {
             const post = posts[index];
             if (!userData.name || userData.isGuest) { showToast('Гости не могут ставить лайки!', true); return; }
@@ -958,6 +1047,7 @@
                 post.isLiked = (data.status === 'liked');
                 post.likes = data.likes;
                 if (post.isLiked) likedSet.add(post.id); else likedSet.delete(post.id);
+                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
             } catch (e) { showToast(e.message, true); }
         };
@@ -979,7 +1069,9 @@
         window.deletePost = async function(id) {
             try {
                 await api('/api/posts/' + id, { method: 'DELETE' });
-                posts = posts.filter(p => p.id !== id); renderPosts();
+                posts = posts.filter(p => p.id !== id);
+                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
+                renderPosts();
                 showToast('История удалена');
             } catch (e) { showToast(e.message, true); }
         };
@@ -987,9 +1079,8 @@
         document.getElementById('postImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) { currentPostImageBase64 = event.target.result; showToast('Картинка прикреплена!'); };
-                reader.readAsDataURL(file);
+                compressImage(file).then(b64 => { currentPostImageBase64 = b64; showToast('Картинка прикреплена (сжата)!'); })
+                    .catch(err => showToast(err.message, true));
             } else { currentPostImageBase64 = null; }
         });
 
@@ -1040,13 +1131,11 @@
         document.getElementById('commentImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    currentCommentImageBase64 = event.target.result;
-                    commentImagePreview.src = currentCommentImageBase64;
+                compressImage(file).then(b64 => {
+                    currentCommentImageBase64 = b64;
+                    commentImagePreview.src = b64;
                     commentImagePreview.style.display = 'inline-block';
-                };
-                reader.readAsDataURL(file);
+                }).catch(err => showToast(err.message, true));
             } else {
                 currentCommentImageBase64 = null;
                 commentImagePreview.style.display = 'none';
@@ -1064,11 +1153,15 @@
                     div.className = 'comment-item';
                     
                     const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" onclick="openImageModal('${c.image}')">` : '';
+                    const deleteBtn = (userData.name && c.author === userData.name && !userData.isGuest)
+                        ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий">🗑️</button>`
+                        : '';
                     
                     div.innerHTML = `
                         <div class="comment-header">
                             <span class="comment-author">${escapeHTML(c.author)}</span>
                             <span>${formatDate(c.date)}</span>
+                            ${deleteBtn}
                         </div>
                         <div class="comment-text">${escapeHTML(c.text)}</div>
                         ${imageHTML}
@@ -1101,6 +1194,16 @@
                 showToast('Комментарий добавлен!');
             } catch (e) { showToast(e.message, true); }
         });
+
+        window.deleteComment = async function(commentId) {
+            if (!window.confirm('Удалить этот комментарий?')) return;
+            try {
+                await api('/api/comments/' + commentId, { method: 'DELETE' });
+                await loadPosts();
+                if (posts[currentPostIndexForComments]) renderComments();
+                showToast('Комментарий удалён');
+            } catch (e) { showToast(e.message, true); }
+        };
 
         async function updateLikedSet() {
             if (!userData.name || userData.isGuest) return;
