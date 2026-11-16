@@ -269,9 +269,13 @@
         }
 
         async function api(path, options = {}) {
+            const token = localStorage.getItem('shersh_token') || '';
             const res = await fetch(API + path, {
                 method: options.method || 'GET',
-                headers: { 'Content-Type': 'application/json' },
+                headers: Object.assign(
+                    { 'Content-Type': 'application/json' },
+                    token ? { Authorization: 'Bearer ' + token } : {}
+                ),
                 body: options.body ? JSON.stringify(options.body) : undefined,
                 cache: 'no-store'
             });

@@ -1,5 +1,8 @@
 import os
 import hashlib
+import hmac
+import base64
+import json
 import time
 import binascii
 import uuid
@@ -14,6 +17,56 @@ app = Flask(__name__)
 CORS(app)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+
+# --- Токены входа: подписанная строка, без состояния на сервере ---
+TOKEN_TTL_DAYS = 30
+_TOKEN_SECRET = (os.environ.get("APP_SECRET") or BOT_TOKEN or "shersh-dev-secret").encode()
+
+
+def issue_token(name):
+    """Выдаёт токен вида <payload>.<подпись>, действует 30 дней."""
+    payload = json.dumps({
+        "n": name,
+        "e": int((datetime.now(timezone.utc) + timedelta(days=TOKEN_TTL_DAYS)).timestamp()),
+    }, separators=(",", ":"))
+    raw = base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+    sig = hmac.new(_TOKEN_SECRET, raw.encode(), hashlib.sha256).hexdigest()
+    return raw + "." + sig
+
+
+def _token_name(token):
+    """Возвращает имя из токена или пустую строку, если токен битый или истёк."""
+    if not token or "." not in token:
+        return ""
+    raw, _, sig = token.rpartition(".")
+    expected = hmac.new(_TOKEN_SECRET, raw.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return ""
+    try:
+        padded = raw + "=" * (-len(raw) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+    except Exception:
+        return ""
+    if int(payload.get("e") or 0) < int(datetime.now(timezone.utc).timestamp()):
+        return ""
+    return payload.get("n") or ""
+
+
+def auth_user():
+    """Имя пользователя из заголовка Authorization: Bearer <токен>."""
+    header = request.headers.get("Authorization", "")
+    if header.startswith("Bearer "):
+        return _token_name(header[7:].strip())
+    return ""
+
+
+def require_admin():
+    """Имя админа по токену или пустая строка."""
+    name = auth_user()
+    if not name or not _is_admin_name(name):
+        return ""
+    return name
+
 
 # --- Лёгкий rate limiting по IP (простая in-memory реализация) ---
 from collections import defaultdict, deque
@@ -320,9 +373,11 @@ def check_auth():
 @app.route("/api/telegram-bind", methods=["POST"])
 def telegram_bind():
     data = request.json or {}
-    name = (data.get("name") or "").strip()
+    name = auth_user()
     telegram_id = str((data.get("telegram_id") or "")).strip()
-    if not name or not telegram_id:
+    if not name:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    if not telegram_id:
         return jsonify({"error": "Нет данных"}), 400
     p = find_profile(name)
     if not p:
@@ -393,7 +448,9 @@ def telegram_status():
 @rate_limit(limit=10, window=300)
 def telegram_bind_code():
     data = request.json or {}
-    name = (data.get("name") or "").strip()
+    name = auth_user()
+    if not name:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     p = find_profile(name)
     if not p:
         return jsonify({"error": "Пользователь не найден"}), 404
@@ -512,7 +569,8 @@ def register():
         if e.response.status_code == 409:
             return jsonify({"error": "Имя или ник уже заняты!"}), 409
         raise
-    return jsonify({"status": "ok", "user": {"name": name, "nickname": nickname, "bio": "", "avatar": "", "is_admin": False}})
+    return jsonify({"status": "ok", "user": {"name": name, "nickname": nickname, "bio": "", "avatar": "", "is_admin": False},
+                    "token": issue_token(name)})
 
 
 # --- Вход ---
@@ -547,7 +605,7 @@ def login():
         "name": p["name"], "nickname": p.get("nickname", ""),
         "bio": p.get("bio", ""), "avatar": p.get("avatar", ""),
         "is_admin": bool(p.get("is_admin")),
-    }})
+    }, "token": issue_token(p["name"])})
 
 
 # --- Список всех профилей (для аватаров/ников в ленте) ---
@@ -576,6 +634,11 @@ def get_profile(name):
 def update_profile():
     data = request.json or {}
     old_name = (data.get("old_name") or "").strip()
+    me = auth_user()
+    if not me:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    if me != old_name:
+        return jsonify({"error": "Можно менять только свой профиль"}), 403
     payload = {}
     if "name" in data and data.get("name"): payload["name"] = (data.get("name") or "").strip()
     if "nickname" in data and data.get("nickname"): payload["nickname"] = (data.get("nickname") or "").strip()
@@ -617,6 +680,8 @@ def delete_profile():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "no name"}), 400
+    if auth_user() != name:
+        return jsonify({"error": "Можно удалить только свой профиль"}), 403
     db_delete("profiles", "name", name)
     # посты остаются, как и было в ТЗ (аккаунт удаляется, истории остаются)
     return jsonify({"status": "ok"})
@@ -628,6 +693,8 @@ def delete_profile_full():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "no name"}), 400
+    if auth_user() != name:
+        return jsonify({"error": "Можно удалить только свои данные"}), 403
 
     removed = {"posts": 0, "comments": 0, "likes": 0}
 
@@ -692,6 +759,8 @@ def change_password():
 
     if not name:
         return jsonify({"error": "Требуется авторизация"}), 401
+    if auth_user() != name:
+        return jsonify({"error": "Требуется авторизация"}), 401
     if len(new_password) < 4 or len(new_password) > 64:
         return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
 
@@ -733,8 +802,10 @@ def create_post():
     data = request.json or {}
     title = (data.get("title") or "").strip()
     text = (data.get("text") or "").strip()
-    author = (data.get("author") or "").strip()
+    author = auth_user()
     image = data.get("image") or None
+    if not author:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     if _is_banned(author):
         return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     if not title or not text or not author:
@@ -754,6 +825,14 @@ def create_post():
 @rate_limit(limit=20, window=60)  # не больше 20 редактирований поста в минуту
 def update_post(post_id):
     data = request.json or {}
+    me = auth_user()
+    if not me:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    owns = db_select("posts", params={"select": "author", "id": f"eq.{post_id}"})
+    if not owns:
+        return jsonify({"error": "Пост не найден"}), 404
+    if owns[0].get("author") != me and not _is_admin_name(me):
+        return jsonify({"error": "Нет прав на редактирование этого поста"}), 403
     payload = {}
     if "title" in data: payload["title"] = (data.get("title") or "").strip()
     if "text" in data: payload["text"] = (data.get("text") or "").strip()
@@ -771,7 +850,7 @@ def update_post(post_id):
 @app.route("/api/posts/<int:post_id>", methods=["DELETE"])
 def delete_post(post_id):
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = auth_user()
     # проверяем права: автор поста или админ
     posts = db_select("posts", params={"select": "author", "id": f"eq.{post_id}"})
     if not posts:
@@ -796,9 +875,9 @@ def delete_post(post_id):
 @rate_limit(limit=30, window=60)  # не больше 30 лайков в минуту с одного IP
 def toggle_like(post_id):
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = auth_user()
     if not user:
-        return jsonify({"error": "no user"}), 400
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     if _is_banned(user):
         return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     existing = db_select("likes", params={"select": "*", "post_id": f"eq.{post_id}", "user_name": f"eq.{user}"})
@@ -824,10 +903,12 @@ def list_comments(post_id):
 @rate_limit(limit=20, window=60)  # не больше 20 комментариев в минуту с одного IP
 def add_comment(post_id):
     data = request.json or {}
-    author = (data.get("author") or "").strip()
+    author = auth_user()
     text = (data.get("text") or "").strip()
     image = data.get("image") or None
     parent_id = data.get("parent_id")
+    if not author:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     if parent_id in ("", 0, "0", "null"):
         parent_id = None
     if parent_id is not None:
@@ -869,7 +950,7 @@ def add_comment(post_id):
 @rate_limit(limit=20, window=60)
 def update_comment(comment_id):
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = auth_user()
     text = (data.get("text") or "").strip()
     if not user:
         return jsonify({"error": "Требуется авторизация"}), 401
@@ -893,7 +974,7 @@ def update_comment(comment_id):
 @app.route("/api/comments/<int:comment_id>", methods=["DELETE"])
 def delete_comment(comment_id):
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = auth_user()
     # проверяем: автор комментария или админ
     comments = db_select("comments", params={"select": "author", "id": f"eq.{comment_id}"})
     if not comments:
@@ -920,10 +1001,12 @@ def report():
     rtype = (data.get("type") or "").strip()
     target_id = str((data.get("target_id") or "")).strip()
     target_author = (data.get("target_author") or "").strip()
-    reporter = (data.get("reporter") or "").strip()
+    reporter = auth_user()
     reason = (data.get("reason") or "").strip()
     if rtype not in ("post", "comment", "user") or not target_id:
         return jsonify({"error": "Некорректная жалоба"}), 400
+    if not reporter:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     if _is_banned(reporter):
         return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     if len(reason) > 500:
@@ -937,8 +1020,8 @@ def report():
 
 @app.route("/api/reports", methods=["GET"])
 def list_reports():
-    user = (request.args.get("user") or "").strip()
-    if not _is_admin_name(user):
+    user = require_admin()
+    if not user:
         return jsonify({"error": "Нет прав"}), 403
     rows = db_select("reports", params={"select": "*", "order": "created_at.desc"})
     return jsonify(rows)
@@ -946,10 +1029,7 @@ def list_reports():
 
 @app.route("/api/reports/<int:report_id>", methods=["DELETE"])
 def delete_report(report_id):
-    data = request.json or {}
-    user = (data.get("user") or "").strip()
-    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
-    if not (profiles and profiles[0].get("is_admin")):
+    if not require_admin():
         return jsonify({"error": "Нет прав"}), 403
     db_delete("reports", "id", report_id)
     return jsonify({"status": "ok"})
@@ -959,10 +1039,9 @@ def delete_report(report_id):
 @app.route("/api/ban", methods=["POST"])
 def add_ban():
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = require_admin()
     target = (data.get("target") or "").strip()
-    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
-    if not (profiles and profiles[0].get("is_admin") and target):
+    if not (user and target):
         return jsonify({"error": "Нет прав или нет цели"}), 403
     if target == user:
         return jsonify({"error": "Нельзя забанить самого себя"}), 400
@@ -979,10 +1058,9 @@ def add_ban():
 @app.route("/api/ban", methods=["DELETE"])
 def remove_ban():
     data = request.json or {}
-    user = (data.get("user") or "").strip()
+    user = require_admin()
     target = (data.get("target") or "").strip()
-    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
-    if not (profiles and profiles[0].get("is_admin") and target):
+    if not (user and target):
         return jsonify({"error": "Нет прав или нет цели"}), 403
     db_delete("banned", "name", target)
     return jsonify({"status": "ok"})
@@ -1012,8 +1090,8 @@ def _is_admin_name(name):
 @app.route("/api/admin/overview", methods=["GET"])
 def admin_overview():
     """Одна пачка данных для админки: пользователи, баны, жалобы, посты, комментарии."""
-    user = (request.args.get("user") or "").strip()
-    if not _is_admin_name(user):
+    user = require_admin()
+    if not user:
         return jsonify({"error": "Нет прав"}), 403
 
     def safe(table, params):
@@ -1090,9 +1168,9 @@ def admin_overview():
 def admin_update_user():
     """Меняет флаг администратора у профиля. Доступно только администратору."""
     data = request.json or {}
-    admin = (data.get("user") or "").strip()
+    admin = require_admin()
     target = (data.get("target") or "").strip()
-    if not _is_admin_name(admin) or not target:
+    if not admin or not target:
         return jsonify({"error": "Нет прав или нет цели"}), 403
     if "is_admin" not in data:
         return jsonify({"error": "Нет данных для обновления"}), 400
@@ -1106,6 +1184,8 @@ def admin_update_user():
 @rate_limit(limit=30, window=60)  # не больше 30 загрузок файлов в минуту
 def upload_image():
     """Принимает base64-изображение, загружает в Supabase Storage, возвращает публичный URL."""
+    if not auth_user():
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
     data = request.json or {}
     base64_data = data.get("image") or ""
     if not base64_data:

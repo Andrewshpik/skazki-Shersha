@@ -855,6 +855,27 @@
         // --- НАСТРОЙКИ API (бэкенд на Netrun) ---
         const API_BASE = 'https://shersh-auth.de1.netrun.io';
 
+        // --- Токен входа: сервер верит только ему, не имени в запросе ---
+        const TOKEN_KEY = 'shersh_token';
+
+        function getToken() {
+            try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
+        }
+
+        function setToken(token) {
+            if (!token) return;
+            try { localStorage.setItem(TOKEN_KEY, token); } catch (e) { /* приватный режим */ }
+        }
+
+        function clearToken() {
+            try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* приватный режим */ }
+        }
+
+        function clearSession() {
+            try { localStorage.removeItem("shersh_user"); } catch (e) { /* приватный режим */ }
+            clearToken();
+        }
+
         function escapeHTML(str) {
             return String(str == null ? '' : str)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -912,10 +933,14 @@
             let lastErr = null;
             for (let i = 0; i < attempts; i++) {
                 try {
-                    const res = await fetch(API_BASE + path, {
-                        headers: { 'Content-Type': 'application/json' },
-                        ...options
-                    });
+                const res = await fetch(API_BASE + path, {
+                    ...options,
+                    headers: Object.assign(
+                        { 'Content-Type': 'application/json' },
+                        getToken() ? { Authorization: 'Bearer ' + getToken() } : {},
+                        (options && options.headers) || {}
+                    )
+                });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) {
                         // 5xx — сервер просыпается, пробуем ещё; 4xx — повторять бессмысленно
@@ -1249,7 +1274,7 @@
                 const r = await api('/api/ban/check?name=' + encodeURIComponent(userData.name));
                 if (r.banned) {
                     showToast('Ваш аккаунт заблокирован модератором', true);
-                    localStorage.removeItem('shersh_user');
+                    clearSession();
                     setTimeout(() => location.reload(), 1500);
                 }
             } catch (e) { /* сервер спит — игнорируем */ }
@@ -1265,6 +1290,7 @@
             try {
                 const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, nickname: nick, password: pass }) });
                 userData = { name: data.user.name, nickname: data.user.nickname, bio: '', avatar: '', is_admin: !!data.user.is_admin };
+                setToken(data.token);
                 persistUser(); loginModal.style.display = 'none';
                 showToast(`Добро пожаловать, ${name}!`);
             } catch (e) { showToast(e.message, true); }
@@ -1278,6 +1304,7 @@
             try {
                 const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ name, password: pass }) });
                 userData = { name: data.user.name, nickname: data.user.nickname, bio: data.user.bio, avatar: data.user.avatar, is_admin: !!data.user.is_admin };
+                setToken(data.token);
                 persistUser(); loginModal.style.display = 'none';
                 showToast(`С возвращением, ${userData.name}!`);
             } catch (e) { showToast(e.message, true); }
@@ -1549,13 +1576,13 @@
             } catch (e) { showToast(e.message, true); }
         });
 
-        document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
-        document.getElementById('headerLogoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
+        document.getElementById('logoutBtn').addEventListener('click', () => { clearSession(); location.reload(); });
+        document.getElementById('headerLogoutBtn').addEventListener('click', () => { clearSession(); location.reload(); });
 
         // Общий выход из ситуации «сервер не знает такого профиля» (устаревшая сессия)
         function handleStaleProfile(message) {
             if (!/не найден/i.test(String(message || ''))) return false;
-            localStorage.removeItem('shersh_user');
+            clearSession();
             localStorage.removeItem('shersh_seen_comments');
             showToast('Профиль не найден — сессия устарела. Войдите заново', true);
             setTimeout(() => location.reload(), 1600);
@@ -1694,7 +1721,7 @@
         document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
             try {
                 await api('/api/profile', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
-                localStorage.removeItem('shersh_user'); deleteAccountModal.style.display = 'none';
+                clearSession(); deleteAccountModal.style.display = 'none';
                 showToast('Аккаунт удален'); setTimeout(() => location.reload(), 1500);
             } catch (e) { showToast(e.message, true); }
         });
@@ -1732,7 +1759,7 @@
                         throw e;
                     }
                 }
-                localStorage.removeItem('shersh_user');
+                clearSession();
                 localStorage.removeItem(POSTS_CACHE_KEY);
                 localStorage.removeItem('shersh_post_draft');
                 const rem = res && res.removed ? res.removed : null;
@@ -2564,7 +2591,7 @@
             if (usersMap[userData.name]) return false;
 
             const stale = userData.name;
-            localStorage.removeItem('shersh_user');
+            clearSession();
             localStorage.removeItem('shersh_seen_comments');
             userData = { name: '', nickname: '', bio: '', avatar: '', isGuest: true };
             showToast('Профиль «' + stale + '» больше не существует — войдите заново', true);
