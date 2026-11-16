@@ -538,14 +538,39 @@ def add_comment(post_id):
     author = (data.get("author") or "").strip()
     text = (data.get("text") or "").strip()
     image = data.get("image") or None
+    parent_id = data.get("parent_id")
+    if parent_id in ("", 0, "0", "null"):
+        parent_id = None
+    if parent_id is not None:
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            parent_id = None
     if not author and not text and not image:
         return jsonify({"error": "Пустой комментарий"}), 400
     if len(text) > 3000:
         return jsonify({"error": "Комментарий не длиннее 3000 символов"}), 400
     if contains_profanity(text):
         return jsonify({"error": "Комментарий содержит нецензурные выражения"}), 400
-    row = db_insert("comments", {"post_id": post_id, "author": author or "Аноним",
-                                  "text": text, "image": image})[0]
+    payload = {"post_id": post_id, "author": author or "Аноним",
+               "text": text, "image": image}
+    if parent_id is not None:
+        # вложенность только 1 уровень: ответ на ответ прикрепляем к корню
+        try:
+            parent_rows = db_select("comments", params={"select": "id,parent_id", "id": f"eq.{parent_id}"})
+            if parent_rows:
+                root = parent_rows[0].get("parent_id") or parent_rows[0].get("id")
+                parent_id = root
+            else:
+                parent_id = None
+        except Exception:
+            pass
+        payload["parent_id"] = parent_id
+    try:
+        row = db_insert("comments", payload)[0]
+    except Exception:
+        payload.pop("parent_id", None)
+        row = db_insert("comments", payload)[0]
     return jsonify({"status": "ok", "comment": row})
 
 

@@ -231,8 +231,13 @@
             background-color: var(--card-bg); color: var(--text-color); padding: 15px 20px;
             border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             border-left: 5px solid var(--gold-accent); font-weight: bold; animation: slideIn 0.3s ease-out;
+            display: flex; align-items: flex-start; gap: 8px; max-width: 360px;
         }
+        .toast .toast-icon { flex: none; }
+        .toast.success { border-left-color: var(--gold-accent); }
         .toast.error { border-left-color: var(--error-color); }
+        .toast.info { border-left-color: #4a90e2; }
+        .btn:disabled, .action-btn:disabled { opacity: 0.6; cursor: progress; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
         .sparkle {
@@ -384,6 +389,23 @@
         .comment-item {
             background-color: var(--comment-bg); padding: 10px 15px; border-radius: 8px;
             margin-bottom: 10px; border: 1px solid var(--border-color);
+        }
+        .comment-item.comment-reply {
+            margin-left: 32px; border-left: 3px solid var(--gold-accent);
+            background-color: var(--card-bg); margin-bottom: 8px;
+        }
+        .reply-indicator {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            padding: 8px 12px; margin-bottom: 8px; border-radius: 8px;
+            background: var(--comment-bg); border-left: 3px solid var(--gold-accent);
+            font-size: 0.88rem;
+        }
+        .reply-cancel { background: none; border: none; cursor: pointer; font-size: 1rem; opacity: 0.7; }
+        .reply-cancel:hover { opacity: 1; }
+        .new-comments-badge {
+            display: inline-block; margin-left: 4px; padding: 1px 7px;
+            border-radius: 10px; background: var(--gold-accent); color: #1a1a1a;
+            font-size: 0.75rem; font-weight: 700; vertical-align: middle;
         }
         .comment-header { display: flex; justify-content: space-between; font-size: 0.85em; color: #888; margin-bottom: 5px; }
         .comment-author { font-weight: bold; color: var(--text-color); }
@@ -716,6 +738,11 @@
         <div class="modal-content">
             <h2 style="text-align: center;">💬 Комментарии</h2>
             <div class="comments-list" id="commentsList"></div>
+
+            <div id="replyIndicator" class="reply-indicator" style="display:none;">
+                <span id="replyIndicatorText"></span>
+                <button type="button" class="reply-cancel" onclick="cancelReply()" aria-label="Отменить ответ">✖</button>
+            </div>
             
             <div class="comment-input-row">
                 <textarea id="commentInput" placeholder="Написать комментарий..." style="min-height: 45px;"></textarea>
@@ -742,6 +769,19 @@
         }
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
+        const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // 12 МБ — до сжатия
+
+        function validateImageFile(file) {
+            if (!file) return 'Файл не выбран';
+            if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type || '')) {
+                return 'Можно загрузить только JPG, PNG, WEBP или GIF';
+            }
+            if (file.size > MAX_UPLOAD_BYTES) {
+                return `Файл слишком большой (${(file.size / 1048576).toFixed(1)} МБ). Максимум 12 МБ`;
+            }
+            return null;
+        }
+
         function compressImage(file, maxWidth = 1280, quality = 0.7) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -775,13 +815,36 @@
         }
 
         async function api(path, options = {}) {
-            const res = await fetch(API_BASE + path, {
-                headers: { 'Content-Type': 'application/json' },
-                ...options
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error || ('Ошибка ' + res.status));
-            return data;
+            const attempts = 3;
+            let lastErr = null;
+            for (let i = 0; i < attempts; i++) {
+                try {
+                    const res = await fetch(API_BASE + path, {
+                        headers: { 'Content-Type': 'application/json' },
+                        ...options
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        // 5xx — сервер просыпается, пробуем ещё; 4xx — повторять бессмысленно
+                        if (res.status >= 500 && i < attempts - 1) {
+                            lastErr = new Error(data.error || ('Ошибка ' + res.status));
+                            await new Promise(r => setTimeout(r, 800 * (i + 1)));
+                            continue;
+                        }
+                        throw new Error(data.error || ('Ошибка ' + res.status));
+                    }
+                    return data;
+                } catch (e) {
+                    lastErr = e;
+                    const isNet = /fetch|network|Failed|соединени|Соединени|таймаут|timeout/i.test(e.message || '');
+                    if (i < attempts - 1 && (isNet || /Ошибка 5\d\d/.test(e.message || ''))) {
+                        await new Promise(r => setTimeout(r, 800 * (i + 1)));
+                        continue;
+                    }
+                    throw e;
+                }
+            }
+            throw lastErr || new Error('Сеть недоступна');
         }
 
         let posts = [];
@@ -828,10 +891,26 @@
             }
         }
 
+        const PROFILES_CACHE_KEY = 'shersh_profiles_cache';
+
         async function loadProfiles() {
+            // сначала поднимаем кеш — аватары не мигают, если сервер спит
+            try {
+                const cached = JSON.parse(localStorage.getItem(PROFILES_CACHE_KEY) || 'null');
+                if (cached && typeof cached === 'object') {
+                    Object.keys(cached).forEach(k => { usersMap[k] = cached[k]; });
+                }
+            } catch (e) {}
             try {
                 const profiles = await api('/api/profiles');
                 profiles.forEach(p => usersMap[p.name] = p);
+                try {
+                    const slim = {};
+                    profiles.forEach(p => {
+                        slim[p.name] = { name: p.name, nickname: p.nickname, avatar: p.avatar, bio: p.bio };
+                    });
+                    localStorage.setItem(PROFILES_CACHE_KEY, JSON.stringify(slim));
+                } catch (e) {}
             } catch (e) { /* профили подтягиваются по мере необходимости */ }
         }
 
@@ -885,11 +964,26 @@
             }
         });
 
-        function showToast(message, isError = false) {
+        // Лоадер на время запроса
+        async function withLoading(btn, fn) {
+            if (!btn || btn.disabled) return;
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Отправка...';
+            try { return await fn(); }
+            finally { btn.disabled = false; btn.textContent = original; }
+        }
+
+        function showToast(message, isError = false, kind = null) {
             const container = document.getElementById('toastContainer');
+            if (!container) return;
+            const type = kind || (isError ? 'error' : 'success');
+            const icons = { success: '✅', error: '⚠️', info: 'ℹ️' };
             const toast = document.createElement('div');
-            toast.className = `toast ${isError ? 'error' : ''}`;
-            toast.textContent = message;
+            toast.className = `toast ${type}`;
+            toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+            toast.innerHTML = `<span class="toast-icon" aria-hidden="true">${icons[type] || icons.info}</span><span class="toast-text"></span>`;
+            toast.querySelector('.toast-text').textContent = message;
             container.appendChild(toast);
             setTimeout(() => {
                 toast.style.animation = 'slideIn 0.3s ease-in reverse forwards';
@@ -1203,6 +1297,8 @@
         document.getElementById('avatarInput').addEventListener('change', async function(e) {
             const file = e.target.files[0];
             if (!file) return;
+            const vErr = validateImageFile(file);
+            if (vErr) { showToast(vErr, true); e.target.value = ''; return; }
             try {
                 const b64 = await compressImage(file, 400, 0.7);
                 const url = await uploadImage(b64);
@@ -1321,6 +1417,30 @@
             localStorage.setItem('theme', val);
         });
 
+        // --- Счётчик «новых» комментариев ---
+        const SEEN_COMMENTS_KEY = 'shersh_seen_comments';
+
+        function getSeenComments() {
+            try { return JSON.parse(localStorage.getItem(SEEN_COMMENTS_KEY) || '{}') || {}; }
+            catch (e) { return {}; }
+        }
+
+        function markCommentsSeen(postId, count) {
+            const seen = getSeenComments();
+            seen[String(postId)] = count;
+            try { localStorage.setItem(SEEN_COMMENTS_KEY, JSON.stringify(seen)); } catch (e) {}
+        }
+
+        function newCommentsBadge(post, commentCount) {
+            if (!userData.name || userData.isGuest) return '';
+            const seen = getSeenComments();
+            const prev = seen[String(post.id)];
+            if (prev === undefined) return ''; // пост ещё не открывали — не шумим
+            const diff = commentCount - Number(prev || 0);
+            if (diff <= 0) return '';
+            return ` <span class="new-comments-badge" title="Новые комментарии с прошлого просмотра">+${diff}</span>`;
+        }
+
         function formatDate(dateString) {
             const date = new Date(dateString);
             const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -1422,7 +1542,7 @@
                             👍 Нравится (<span>${post.likes}</span>)
                         </button>
                         <button class="action-btn" onclick="openComments(${index})">
-                            💬 Комментарии (${commentCount})
+                            💬 Комментарии (${commentCount})${newCommentsBadge(post, commentCount)}
                         </button>
                         <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
                             🔗 Поделиться
@@ -1752,6 +1872,8 @@
         document.getElementById('postImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
+                const vErr = validateImageFile(file);
+                if (vErr) { showToast(vErr, true); e.target.value = ''; currentPostImageBase64 = null; return; }
                 compressImage(file)
                     .then(b64 => uploadImage(b64))
                     .then(url => { currentPostImageBase64 = url; showToast('Картинка загружена!'); })
@@ -1801,14 +1923,17 @@
             const text = document.getElementById('postText').value.trim();
             if (!title || !text) { showToast('Заполни заголовок и текст!', true); return; }
 
+            const btn = document.getElementById('submitPostBtn');
             try {
-                if (editingPostId) {
-                    await api('/api/posts/' + editingPostId, { method: 'PATCH', body: JSON.stringify({ title, text, image: currentPostImageBase64 }) });
-                    showToast('История обновлена!');
-                } else {
-                    await api('/api/posts', { method: 'POST', body: JSON.stringify({ title, text, author: userData.name, image: currentPostImageBase64 }) });
-                    showToast('История опубликована!');
-                }
+                await withLoading(btn, async () => {
+                    if (editingPostId) {
+                        await api('/api/posts/' + editingPostId, { method: 'PATCH', body: JSON.stringify({ title, text, image: currentPostImageBase64 }) });
+                        showToast('История обновлена!');
+                    } else {
+                        await api('/api/posts', { method: 'POST', body: JSON.stringify({ title, text, author: userData.name, image: currentPostImageBase64 }) });
+                        showToast('История опубликована!');
+                    }
+                });
                 postModal.style.display = 'none';
                 if (!editingPostId) localStorage.removeItem('shersh_post_draft');
                 await loadPosts();
@@ -1821,16 +1946,43 @@
         const commentInput = document.getElementById('commentInput');
         const commentImagePreview = document.getElementById('commentImagePreview');
         let currentPostIndexForComments = null;
+        let replyTo = null; // { id, author } — на какой комментарий отвечаем
+
+        window.setReply = function(commentId, author) {
+            if (!userData.name || userData.isGuest) { showToast('Гости не могут отвечать на комментарии', true); return; }
+            replyTo = { id: commentId, author: author };
+            const ind = document.getElementById('replyIndicator');
+            const txt = document.getElementById('replyIndicatorText');
+            if (ind && txt) {
+                txt.textContent = 'Ответ для ' + author;
+                ind.style.display = 'flex';
+            }
+            const inp = document.getElementById('commentInput');
+            if (inp) { inp.focus(); inp.placeholder = 'Ответ для ' + author + '...'; }
+        };
+
+        window.cancelReply = function() {
+            replyTo = null;
+            const ind = document.getElementById('replyIndicator');
+            if (ind) ind.style.display = 'none';
+            const inp = document.getElementById('commentInput');
+            if (inp) inp.placeholder = 'Написать комментарий...';
+        };
 
         window.openComments = function(index) {
             currentPostIndexForComments = index;
+            cancelReply();
             renderComments();
+            const post = posts[index];
+            if (post) markCommentsSeen(post.id, (post.comments || []).length);
             commentsModal.style.display = 'flex';
         };
 
         document.getElementById('commentImageInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
+                const vErr = validateImageFile(file);
+                if (vErr) { showToast(vErr, true); e.target.value = ''; currentCommentImageBase64 = null; commentImagePreview.style.display = 'none'; return; }
                 compressImage(file)
                     .then(b64 => uploadImage(b64))
                     .then(url => {
@@ -1847,44 +1999,78 @@
 
         function renderComments() {
             commentsList.innerHTML = '';
-            const comments = posts[currentPostIndexForComments].comments || [];
+            const post = posts[currentPostIndexForComments];
+            if (!post) {
+                commentsList.innerHTML = `
+                    <div class="skeleton-card" style="padding:12px;">
+                        <div class="skeleton-line" style="width:35%"></div>
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>`;
+                return;
+            }
+            const comments = post.comments || [];
             if (comments.length === 0) {
                 commentsList.innerHTML = '<p style="color: #888; text-align: center;">Пока нет комментариев. Будь первым!</p>';
             } else {
-                comments.forEach(c => {
-                    const div = document.createElement('div');
-                    div.className = 'comment-item';
-                    
-                    const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" alt="Фото в комментарии" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
-                    const own = userData.name && c.author === userData.name && !userData.isGuest;
-                    const editBtn = own
-                        ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий" aria-label="Редактировать комментарий">✏️</button>`
-                        : '';
-const deleteBtn = own
-                        ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий" aria-label="Удалить комментарий">🗑️</button>`
-                        : '';
-                    const reportBtn = !userData.isGuest && userData.name
-                        ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться" aria-label="Пожаловаться на комментарий">🚩</button>`
-                        : '';
-
-                    div.innerHTML = `
-                        <div class="comment-header">
-                            <span class="comment-author">${escapeHTML(c.author)}</span>
-                            <span>${formatDate(c.date)}</span>
-                            ${editBtn}
-                            ${reportBtn}
-                            ${deleteBtn}
-                        </div>
-                        <div class="comment-text" data-cid="${c.id}">${escapeHTML(c.text)}</div>
-                        ${imageHTML}
-                    `;
-                    commentsList.appendChild(div);
+                // группируем: корни + ответы (вложенность 1 уровень)
+                const roots = comments.filter(c => !c.parent_id);
+                const repliesByParent = {};
+                comments.filter(c => c.parent_id).forEach(c => {
+                    const key = String(c.parent_id);
+                    (repliesByParent[key] = repliesByParent[key] || []).push(c);
                 });
+                // если корень не найден (удалён), показываем ответ как корень
+                const orphanReplies = Object.keys(repliesByParent)
+                    .filter(k => !roots.some(r => String(r.id) === k))
+                    .flatMap(k => repliesByParent[k]);
+
+                roots.forEach(c => {
+                    commentsList.appendChild(buildCommentNode(c, false));
+                    (repliesByParent[String(c.id)] || []).forEach(r => {
+                        commentsList.appendChild(buildCommentNode(r, true));
+                    });
+                });
+                orphanReplies.forEach(c => commentsList.appendChild(buildCommentNode(c, false)));
             }
             commentInput.value = '';
             currentCommentImageBase64 = null;
             commentImagePreview.style.display = 'none';
             commentImagePreview.src = '';
+        }
+
+        function buildCommentNode(c, isReply) {
+            const div = document.createElement('div');
+            div.className = 'comment-item' + (isReply ? ' comment-reply' : '');
+
+            const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" alt="Фото в комментарии" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
+            const own = userData.name && c.author === userData.name && !userData.isGuest;
+            const editBtn = own
+                ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий" aria-label="Редактировать комментарий">✏️</button>`
+                : '';
+            const deleteBtn = own
+                ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий" aria-label="Удалить комментарий">🗑️</button>`
+                : '';
+            const reportBtn = !userData.isGuest && userData.name
+                ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться" aria-label="Пожаловаться на комментарий">🚩</button>`
+                : '';
+            const replyBtn = !isReply && !userData.isGuest && userData.name
+                ? `<button class="delete-comment-btn reply-btn" onclick="setReply(${c.id}, '${escapeHTML(c.author).replace(/'/g, "\\'")}')" title="Ответить" aria-label="Ответить на комментарий">↩️</button>`
+                : '';
+
+            div.innerHTML = `
+                <div class="comment-header">
+                    <span class="comment-author">${escapeHTML(c.author)}</span>
+                    <span>${formatDate(c.date)}</span>
+                    ${replyBtn}
+                    ${editBtn}
+                    ${reportBtn}
+                    ${deleteBtn}
+                </div>
+                <div class="comment-text" data-cid="${c.id}">${escapeHTML(c.text)}</div>
+                ${imageHTML}
+            `;
+            return div;
         }
 
         document.getElementById('closeCommentsBtn').addEventListener('click', () => { commentsModal.style.display = 'none'; });
@@ -1895,15 +2081,22 @@ const deleteBtn = own
             if (!text && !currentCommentImageBase64) return; 
 
             const post = posts[currentPostIndexForComments];
+            const btn = document.getElementById('submitCommentBtn');
+            const wasReply = !!replyTo;
             try {
-                await api('/api/posts/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({
-                    author: userData.name, text: text || '📷 Фото', image: currentCommentImageBase64
-                }) });
+                await withLoading(btn, async () => {
+                    const payload = {
+                        author: userData.name, text: text || '📷 Фото', image: currentCommentImageBase64
+                    };
+                    if (replyTo) payload.parent_id = replyTo.id;
+                    await api('/api/posts/' + post.id + '/comments', { method: 'POST', body: JSON.stringify(payload) });
+                });
                 await loadPosts();
                 if (posts[currentPostIndexForComments]) renderComments();
                 commentInput.value = ''; currentCommentImageBase64 = null;
                 commentImagePreview.style.display = 'none';
-                showToast('Комментарий добавлен!');
+                cancelReply();
+                showToast(wasReply ? 'Ответ отправлен!' : 'Комментарий добавлен!');
             } catch (e) { showToast(e.message, true); }
         });
 
@@ -1978,13 +2171,52 @@ const deleteBtn = own
         // Динамический Open Graph: если открыт пост по #post-<id>, обновляем OG-теги для карточки при шеринге
         function updateOGForCurrentPost() {
             const m = location.hash.match(/^#post-(\d+)/);
-            if (!m) return;
+            if (!m) {
+                document.title = 'Сказки Шерша';
+                return;
+            }
             const post = posts.find(p => p.id === Number(m[1]));
             if (!post) return;
             const setMeta = (sel, val) => { const el = document.querySelector(sel); if (el) el.setAttribute('content', val); };
             setMeta('meta[property="og:title"]', post.title);
             setMeta('meta[property="og:description"]', (post.text || '').slice(0, 200));
             if (post.image) setMeta('meta[property="og:image"]', post.image);
+            setMeta('meta[property="og:url"]', location.href.split('#')[0] + '#post-' + post.id);
+
+            document.title = post.title + ' — Сказки Шерша';
+
+            // JSON-LD Article
+            setJsonLd('ld-article', {
+                '@context': 'https://schema.org',
+                '@type': 'Article',
+                headline: post.title,
+                articleBody: (post.text || '').slice(0, 3000),
+                datePublished: post.date,
+                author: { '@type': 'Person', name: post.author },
+                image: post.image ? [post.image] : undefined,
+                mainEntityOfPage: location.href.split('#')[0] + '#post-' + post.id
+            });
+
+            // Хлебные крошки
+            setJsonLd('ld-breadcrumbs', {
+                '@context': 'https://schema.org',
+                '@type': 'BreadcrumbList',
+                itemListElement: [
+                    { '@type': 'ListItem', position: 1, name: 'Истории', item: location.origin + location.pathname },
+                    { '@type': 'ListItem', position: 2, name: post.title, item: location.href.split('#')[0] + '#post-' + post.id }
+                ]
+            });
+        }
+
+        function setJsonLd(id, obj) {
+            let el = document.getElementById(id);
+            if (!el) {
+                el = document.createElement('script');
+                el.type = 'application/ld+json';
+                el.id = id;
+                document.head.appendChild(el);
+            }
+            el.textContent = JSON.stringify(obj);
         }
         window.addEventListener('hashchange', updateOGForCurrentPost);
         setTimeout(updateOGForCurrentPost, 1500);
