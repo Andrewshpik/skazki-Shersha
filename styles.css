@@ -130,6 +130,18 @@
         }
         .btn:hover { background-color: var(--gold-hover); transform: scale(1.05); }
 
+        .feed-banner { max-width: 900px; margin: 0 auto 18px; padding: 0 20px; }
+        .feed-banner img {
+            display: block; width: 100%; height: clamp(120px, 20vw, 210px);
+            object-fit: cover; border-radius: 16px; box-shadow: var(--shadow);
+        }
+        @media (max-width: 700px) {
+            .feed-banner { display: none; }
+        }
+        @media print {
+            .feed-banner { display: none !important; }
+        }
+
         .feed-tools {
             display: flex; flex-wrap: wrap; gap: 10px;
             justify-content: center; margin-bottom: 20px;
