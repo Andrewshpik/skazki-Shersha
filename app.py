@@ -516,6 +516,17 @@ def register():
 
 
 # --- Вход ---
+def _is_banned(name):
+    """Есть ли профиль в списке забаненных."""
+    if not name:
+        return False
+    try:
+        rows = db_select("banned", params={"select": "name", "name": f"eq.{name}"})
+    except Exception:
+        return False
+    return bool(rows)
+
+
 @app.route("/api/login", methods=["POST"])
 @rate_limit(limit=20, window=60)  # попыток входа в минуту с одного IP
 def login():
@@ -529,6 +540,8 @@ def login():
         return jsonify({"error": "Пользователь не найден!"}), 404
     if not p.get("password_hash") or not verify_password(password, p["password_hash"]):
         return jsonify({"error": "Неверный пароль!"}), 401
+    if _is_banned(p.get("name") or name):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
 
     return jsonify({"status": "ok", "user": {
         "name": p["name"], "nickname": p.get("nickname", ""),
@@ -722,6 +735,8 @@ def create_post():
     text = (data.get("text") or "").strip()
     author = (data.get("author") or "").strip()
     image = data.get("image") or None
+    if _is_banned(author):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     if not title or not text or not author:
         return jsonify({"error": "Заполни заголовок, текст и автора!"}), 400
     if len(title) > 200:
@@ -784,6 +799,8 @@ def toggle_like(post_id):
     user = (data.get("user") or "").strip()
     if not user:
         return jsonify({"error": "no user"}), 400
+    if _is_banned(user):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     existing = db_select("likes", params={"select": "*", "post_id": f"eq.{post_id}", "user_name": f"eq.{user}"})
     posts = db_select("posts", params={"select": "likes", "id": f"eq.{post_id}"})
     current_likes = posts[0]["likes"] if posts else 0
@@ -818,6 +835,8 @@ def add_comment(post_id):
             parent_id = int(parent_id)
         except (TypeError, ValueError):
             parent_id = None
+    if _is_banned(author):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     if not author and not text and not image:
         return jsonify({"error": "Пустой комментарий"}), 400
     if len(text) > 3000:
@@ -905,6 +924,8 @@ def report():
     reason = (data.get("reason") or "").strip()
     if rtype not in ("post", "comment", "user") or not target_id:
         return jsonify({"error": "Некорректная жалоба"}), 400
+    if _is_banned(reporter):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
     if len(reason) > 500:
         reason = reason[:500]
     db_insert("reports", {
