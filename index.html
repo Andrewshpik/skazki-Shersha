@@ -388,8 +388,7 @@
         }
         .hint-tag:hover { background-color: var(--gold-accent); color: #333; border-color: var(--gold-accent); }
         .post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; }
-        .related-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color); }
-        .related-block h3 { font-size: 1rem; margin-bottom: 10px; opacity: 0.9; }
+        .related-block { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color); }        .related-block h3 { font-size: 1rem; margin-bottom: 10px; opacity: 0.9; }
         .related-list { display: flex; flex-direction: column; gap: 8px; }
         .related-item {
             display: block; text-align: left; width: 100%; cursor: pointer;
@@ -400,6 +399,15 @@
         .related-item:hover { border-color: var(--gold-accent); transform: translateY(-1px); }
         .related-item b { display: block; font-weight: 700; margin-bottom: 3px; }
         .related-item span { font-size: 0.82rem; opacity: 0.7; }
+        .tale-title { text-align: center; font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; color: var(--text-color); }
+        .tale-text {
+            white-space: pre-wrap; line-height: 1.65; font-size: 0.98rem;
+            max-height: 45vh; overflow-y: auto; padding: 14px 16px;
+            background: var(--comment-bg); border: 1px solid var(--border-color); border-radius: 12px;
+        }
+        .tale-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+        .tale-actions .btn { flex: 1; min-width: 130px; font-size: 0.88rem; padding: 9px 12px; }
+        .tale-hint { margin-top: 12px; font-size: 0.78rem; opacity: 0.6; text-align: center; line-height: 1.4; }
         .rules-text { font-size: 0.98rem; line-height: 1.6; color: var(--text-color); }
         .rules-text ol { padding-left: 20px; margin: 10px 0; }
         .rules-text li { margin-bottom: 8px; }
@@ -850,6 +858,26 @@
             </div>
         </div>
     </div>
+
+    <div class="modal-overlay" id="taleModal">
+        <div class="modal-content">
+            <h2 style="text-align: center;">🌙 Сказка на ночь</h2>
+            <div class="tale-title" id="taleTitle"></div>
+            <div class="tale-text" id="taleText"></div>
+            <div class="tale-actions">
+                <button class="btn btn-soft" id="taleAgainBtn">✨ Ещё сказку</button>
+                <button class="btn btn-soft" id="taleCopyBtn">📋 Скопировать</button>
+                <button class="btn" id="talePublishBtn">📖 Опубликовать</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" id="taleFromSiteBtn">Случайная с сайта</button>
+                <button class="btn btn-cancel" id="taleCloseBtn">Закрыть</button>
+            </div>
+            <div class="tale-hint">Сказка собирается прямо в браузере из готовых образов — без внешних сервисов.</div>
+        </div>
+    </div>
+
+    <script src="tale.js"></script>
 
     <script>
         // --- НАСТРОЙКИ API (бэкенд на Netrun) ---
@@ -2606,12 +2634,60 @@
         window.showAbout = function() { document.getElementById('aboutModal').style.display = 'flex'; };
         window.showRules = function() { document.getElementById('rulesModal').style.display = 'flex'; };
 
-        // Случайная сказка на ночь: открыть случайный пост
+        // «Сказка на ночь»: сборка новой сказки прямо в браузере
+        const taleModal = document.getElementById('taleModal');
+        let currentTale = null;
+
+        function renderTale() {
+            if (typeof window.makeTale !== 'function') {
+                showToast('Генератор сказок не загрузился — обнови страницу', true);
+                return;
+            }
+            currentTale = window.makeTale();
+            document.getElementById('taleTitle').textContent = currentTale.title;
+            document.getElementById('taleText').textContent = currentTale.text;
+            document.getElementById('taleText').scrollTop = 0;
+        }
+
         window.randomTale = function() {
-            if (!posts.length) { showToast('Пока нет историй — стань первым!', true); return; }
-            const idx = Math.floor(Math.random() * posts.length);
-            window.openComments(idx);
+            renderTale();
+            taleModal.style.display = 'flex';
         };
+
+        document.getElementById('taleAgainBtn').addEventListener('click', renderTale);
+        document.getElementById('taleCloseBtn').addEventListener('click', () => { taleModal.style.display = 'none'; });
+
+        document.getElementById('taleCopyBtn').addEventListener('click', async () => {
+            if (!currentTale) return;
+            try {
+                await navigator.clipboard.writeText(currentTale.title + '\n\n' + currentTale.text);
+                showToast('Сказка скопирована');
+            } catch (e) {
+                showToast('Не удалось скопировать', true);
+            }
+        });
+
+        document.getElementById('taleFromSiteBtn').addEventListener('click', () => {
+            taleModal.style.display = 'none';
+            if (!posts.length) { showToast('Пока нет историй — стань первым!', true); return; }
+            window.openComments(Math.floor(Math.random() * posts.length));
+        });
+
+        document.getElementById('talePublishBtn').addEventListener('click', () => {
+            if (!currentTale) return;
+            if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт, чтобы опубликовать', true); return; }
+            taleModal.style.display = 'none';
+            editingPostId = null;
+            currentPostImageBase64 = null;
+            document.getElementById('postModalTitle').textContent = 'Новая история';
+            document.getElementById('postTitle').value = currentTale.title;
+            document.getElementById('postText').value = currentTale.text;
+            document.getElementById('postImageInput').value = '';
+            document.getElementById('submitPostBtn').textContent = 'Опубликовать!';
+            updateWordCount();
+            postModal.style.display = 'flex';
+            document.getElementById('postTitle').focus();
+        });
 
         // Поддержка проекта (без платежей — контакт создателя / копия ссылки на репозиторий)
         window.supportProject = function() {
