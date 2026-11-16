@@ -323,6 +323,27 @@
         .rules-text ol { padding-left: 20px; margin: 10px 0; }
         .rules-text li { margin-bottom: 8px; }
 
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+            .sparkle { display: none !important; }
+        }
+
+        /* Печать: только текст историй */
+        @media print {
+            header, .search-bar, .post-actions, .post-controls, .back-to-top,
+            #backToTop, .bell-btn, #bellBtn, footer, .post-tags,
+            .theme-toggle, #themeSelect, .user-info { display: none !important; }
+            body { background: #fff !important; color: #000 !important; }
+            .post-card { box-shadow: none !important; border: none !important; page-break-inside: avoid; }
+            .post-card h2 { page-break-after: avoid; }
+            main { max-width: 100% !important; }
+        }
+
         .modal-buttons { display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px; flex-wrap: wrap; }
         .btn-cancel { background-color: transparent; color: var(--text-color); border: 2px solid var(--border-color); }
         .btn-cancel:hover { background-color: var(--comment-bg); }
@@ -535,8 +556,8 @@
             
             <div class="header-controls">
                 <span class="user-info" id="headerProfileBtn" onclick="showPage('profile')">👋 Гость</span>
-                <button class="logout-icon" id="headerLogoutBtn" title="Выйти" style="display: none;">🚪</button>
-                <button class="bell-btn" id="bellBtn" title="Новые комментарии к вашим историям" style="position:relative; display:none;">🔔<span class="bell-badge" id="bellBadge" style="display:none;"></span></button>
+                <button class="logout-icon" id="headerLogoutBtn" title="Выйти" aria-label="Выйти из аккаунта" style="display: none;">🚪</button>
+                <button class="bell-btn" id="bellBtn" title="Новые комментарии к вашим историям" aria-label="Уведомления о новых комментариях" aria-live="polite" style="position:relative; display:none;">🔔<span class="bell-badge" id="bellBadge" style="display:none;"></span></button>
                 <select id="themeSelect" class="theme-toggle" title="Выбрать тему">
                     <option value="light">🌙 Светлая</option>
                     <option value="dark">🌚 Тёмная</option>
@@ -576,11 +597,11 @@
             <div class="profile-info">
                 <h2>
                     <span id="profileNameDisplay">Имя</span>
-                    <span class="edit-icon" onclick="openEditProfile('name')" title="Изменить имя">✏️</span>
+                    <span class="edit-icon" role="button" tabindex="0" onclick="openEditProfile('name')" title="Изменить имя" aria-label="Изменить имя">✏️</span>
                 </h2>
                 <div class="profile-nickname">
                     <span id="profileNickDisplay">@ник</span>
-                    <span class="edit-icon" onclick="openEditProfile('nick')" title="Изменить ник">✏️</span>
+                    <span class="edit-icon" role="button" tabindex="0" onclick="openEditProfile('nick')" title="Изменить ник" aria-label="Изменить ник">✏️</span>
                 </div>
                 <div class="profile-bio" id="profileBioDisplay">О себе пока ничего не написано...</div>
                 <div class="stats">
@@ -1179,7 +1200,8 @@
         const themeSelect = document.getElementById('themeSelect');
         const body = document.body;
         // применяем сохранённую тему
-        const savedTheme = localStorage.getItem('theme') || 'light';
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const savedTheme = localStorage.getItem('theme') || (prefersDark ? 'dark' : 'light');
         if (savedTheme !== 'light') body.setAttribute('data-theme', savedTheme);
         themeSelect.value = savedTheme;
         themeSelect.addEventListener('change', () => {
@@ -1247,19 +1269,19 @@
                 const avatarSrc = authorData && authorData.avatar ? authorData.avatar : null;
                 const escAuthor = escapeHTML(post.author);
                 const avatarHTML = avatarSrc 
-                    ? `<img src="${avatarSrc}" class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>` 
+                    ? `<img src="${avatarSrc}" class="post-avatar" alt="Аватар ${escapeHTML(post.author)}" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>` 
                     : `<div class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>👤</div>`;
 
                 const isAuthor = userData.name === post.author && !userData.isGuest;
                 const canDelete = isAuthor || userData.is_admin;
                 const controlsHTML = `
                     <div class="post-controls">
-                        ${isAuthor ? `<button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать">✏️</button>` : ''}
-                        ${canDelete ? `<button class="delete-post-btn" onclick="deletePost(${post.id})" title="${userData.is_admin && !isAuthor ? 'Удалить (админ)' : 'Удалить'}">🗑️</button>` : ''}
+                        ${isAuthor ? `<button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать" aria-label="Редактировать историю">✏️</button>` : ''}
+                        ${canDelete ? `<button class="delete-post-btn" onclick="deletePost(${post.id})" title="${userData.is_admin && !isAuthor ? 'Удалить (админ)' : 'Удалить'}" aria-label="Удалить историю">🗑️</button>` : ''}
                     </div>
                 `;
 
-                const imageHTML = post.image ? `<img src="${post.image}" class="post-image" loading="lazy" onclick="openImageModal('${post.image}')">` : '';
+                const imageHTML = post.image ? `<img src="${post.image}" class="post-image" alt="Изображение к истории «${escapeHTML(post.title)}»" loading="lazy" onclick="openImageModal('${post.image}')">` : '';
                 const tagsHTML = (post.tags && post.tags.length)
                     ? `<div class="post-tags">${post.tags.map(t => `<span class="hint-tag" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)}</span>`).join('')}</div>`
                     : '';
@@ -1274,6 +1296,9 @@
                         <span>Автор: <a href="#" class="author-name" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>${escAuthor}</a></span>
                         <span>•</span>
                         <span>${dateStr}</span>
+                        <span>•</span>
+                        <span title="Примерное время чтения">⏱ ${readingTime(post.text)}</span>
+                        <button class="action-btn" onclick="copyPostLink(${post.id})" title="Копировать ссылку на пост" aria-label="Копировать ссылку на пост" style="padding:0;font-size:0.85rem;">🔗</button>
                     </div>
                     ${imageHTML}
                     <div class="post-content"><p>${escapeHTML(post.text)}</p></div>
@@ -1288,7 +1313,7 @@
                         <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
                             🔗 Поделиться
                         </button>
-                        ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться">🚩</button>` : ''}
+                        ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться" aria-label="Пожаловаться на историю">🚩</button>` : ''}
                     </div>
                 `;
                 postsContainer.appendChild(postElement);
@@ -1325,6 +1350,21 @@
                 showToast('Показаны истории с тегом #' + tag);
             }
             renderPosts();
+        };
+
+        // Время чтения (~180 слов в минуту)
+        function readingTime(text) {
+            const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+            const min = Math.max(1, Math.round(words / 180));
+            return min + ' мин';
+        }
+
+        // Копировать ссылку на конкретный пост
+        window.copyPostLink = function(id) {
+            const url = location.origin + location.pathname + '#post-' + id;
+            navigator.clipboard.writeText(url)
+                .then(() => showToast('Ссылка на пост скопирована'))
+                .catch(() => showToast('Не удалось скопировать', true));
         };
 
         // Сортировка: новые (по дате) или популярные (по лайкам)
@@ -1457,8 +1497,32 @@
             document.getElementById('postTitle').value = ''; document.getElementById('postText').value = '';
             document.getElementById('postImageInput').value = '';
             document.getElementById('submitPostBtn').textContent = 'Опубликовать!';
+            // восстановить черновик, если есть
+            const draft = localStorage.getItem('shersh_post_draft');
+            if (draft) {
+                try {
+                    const d = JSON.parse(draft);
+                    if (d.title || d.text) {
+                        document.getElementById('postTitle').value = d.title || '';
+                        document.getElementById('postText').value = d.text || '';
+                        showToast('Черновик восстановлен');
+                    }
+                } catch(e) {}
+            }
             updateWordCount(); postModal.style.display = 'flex';
             document.getElementById('postTitle').focus();
+        });
+
+        // Автосохранение черновика при вводе
+        ['postTitle', 'postText'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => {
+                if (editingPostId) return; // не перетираем при редактировании существующего
+                localStorage.setItem('shersh_post_draft', JSON.stringify({
+                    title: document.getElementById('postTitle').value,
+                    text: document.getElementById('postText').value
+                }));
+            });
         });
 
         document.getElementById('cancelBtn').addEventListener('click', () => { postModal.style.display = 'none'; });
@@ -1477,6 +1541,7 @@
                     showToast('История опубликована!');
                 }
                 postModal.style.display = 'none';
+                if (!editingPostId) localStorage.removeItem('shersh_post_draft');
                 await loadPosts();
             } catch (e) { showToast(e.message, true); }
         });
@@ -1521,16 +1586,16 @@
                     const div = document.createElement('div');
                     div.className = 'comment-item';
                     
-                    const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
+                    const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" alt="Фото в комментарии" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
                     const own = userData.name && c.author === userData.name && !userData.isGuest;
                     const editBtn = own
-                        ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий">✏️</button>`
+                        ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий" aria-label="Редактировать комментарий">✏️</button>`
                         : '';
 const deleteBtn = own
-                        ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий">🗑️</button>`
+                        ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий" aria-label="Удалить комментарий">🗑️</button>`
                         : '';
                     const reportBtn = !userData.isGuest && userData.name
-                        ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться">🚩</button>`
+                        ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться" aria-label="Пожаловаться на комментарий">🚩</button>`
                         : '';
 
                     div.innerHTML = `
@@ -1654,7 +1719,44 @@ const deleteBtn = own
         }
         window.addEventListener('hashchange', updateOGForCurrentPost);
         setTimeout(updateOGForCurrentPost, 1500);
+
+        // --- Модалки: закрытие по Esc и клику по фону + блокировка прокрутки ---
+        function syncBodyScrollLock() {
+            const anyOpen = Array.from(document.querySelectorAll('.modal-overlay'))
+                .some(m => getComputedStyle(m).display === 'flex');
+            document.body.style.overflow = anyOpen ? 'hidden' : '';
+        }
+        const _origShowToastNone = null;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay').forEach(m => {
+                    if (getComputedStyle(m).display === 'flex') m.style.display = 'none';
+                });
+                syncBodyScrollLock();
+            }
+        });
+        // Клик по тёмному фону (не по содержимому) закрывает модалку
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('mousedown', (e) => {
+                if (e.target === overlay) { overlay.style.display = 'none'; syncBodyScrollLock(); }
+            });
+        });
+        // Следим за открытием/закрытием модалок для блокировки прокрутки
+        const overlayObserver = new MutationObserver(syncBodyScrollLock);
+        document.querySelectorAll('.modal-overlay').forEach(m =>
+            overlayObserver.observe(m, { attributes: true, attributeFilter: ['style'] })
+        );
+
+        // --- Кнопка «Наверх» ---
+        const backToTopBtn = document.getElementById('backToTop');
+        window.addEventListener('scroll', () => {
+            backToTopBtn.style.display = window.scrollY > 400 ? 'block' : 'none';
+        });
+        backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
     </script>
+
+    <!-- Кнопка «Наверх» -->
+    <button id="backToTop" title="Наверх" aria-label="Наверх" style="display:none; position:fixed; bottom:20px; left:20px; z-index:1500; width:46px; height:46px; border-radius:50%; border:none; background:var(--gold-accent); color:#333; font-size:1.4rem; cursor:pointer; box-shadow:var(--shadow); transition:transform 0.2s;">↑</button>
 
     <!-- Футер -->
     <footer style="max-width: 800px; margin: 30px auto 20px; padding: 20px 15px 10px; border-top: 1px solid var(--border-color); text-align: center; font-size: 0.9rem; color: #888;">
