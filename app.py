@@ -151,6 +151,39 @@ def _is_expired(value):
         return False
 
 
+def _norm_ident(value):
+    """Приводит имя или @ник к сравнимому виду: без @, без пробелов, нижний регистр."""
+    return str(value or "").strip().lstrip("@").strip().lower()
+
+
+def find_profile(identifier):
+    """Ищет профиль по имени ИЛИ по нику (со @ и без, без учёта регистра)."""
+    raw = str(identifier or "").strip()
+    if not raw:
+        return None
+    bare = raw.lstrip("@").strip()
+
+    for params_field, value in (("name", raw), ("name", bare),
+                                ("nickname", raw), ("nickname", "@" + bare)):
+        try:
+            rows = db_select("profiles", params={"select": "*", params_field: f"eq.{value}"})
+            if rows:
+                return rows[0]
+        except Exception:
+            pass
+
+    # мягкий поиск: без учёта регистра и с любым вариантом @ в нике
+    try:
+        allp = db_select("profiles", params={"select": "*"})
+    except Exception:
+        return None
+    target = _norm_ident(raw)
+    for p in allp:
+        if _norm_ident(p.get("name")) == target or _norm_ident(p.get("nickname")) == target:
+            return p
+    return None
+
+
 @app.route("/", methods=["GET"])
 def home():
     return {"status": "ok", "service": "Skazki Shersha API"}
@@ -246,7 +279,10 @@ def telegram_bind():
     telegram_id = str((data.get("telegram_id") or "")).strip()
     if not name or not telegram_id:
         return jsonify({"error": "Нет данных"}), 400
-    db_update("profiles", {"telegram_id": telegram_id}, "name", name)
+    p = find_profile(name)
+    if not p:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    db_update("profiles", {"telegram_id": telegram_id}, "name", p["name"])
     return jsonify({"status": "ok"})
 
 
@@ -258,10 +294,11 @@ def forgot_password():
     name = (data.get("name") or "").strip()
     if not BOT_TOKEN:
         return jsonify({"error": "Восстановление через Telegram недоступно"}), 400
-    profiles = db_select("profiles", params={"select": "telegram_id", "name": f"eq.{name}"})
-    if not profiles:
+    profile = find_profile(name)
+    if not profile:
         return jsonify({"error": "Пользователь не найден"}), 404
-    profile = profiles[0]
+    # дальше везде работаем с настоящим именем профиля, а не с тем, что ввели (@ник тоже допустим)
+    name = profile.get("name") or name
     tid = profile.get("telegram_id")
     if not tid:
         return jsonify({"error": "К этому профилю не привязан Telegram"}), 400
@@ -353,15 +390,10 @@ def login():
     name = (data.get("name") or "").strip()
     password = (data.get("password") or "").strip()
 
-    profiles = db_select("profiles", params={"select": "*", "name": f"eq.{name}"})
-    if not profiles:
-        # ищем без учёта регистра
-        allp = db_select("profiles", params={"select": "*"})
-        profiles = [p for p in allp if p.get("name", "").lower() == name.lower()]
+    p = find_profile(name)
 
-    if not profiles:
+    if not p:
         return jsonify({"error": "Пользователь не найден!"}), 404
-    p = profiles[0]
     if not p.get("password_hash") or not verify_password(password, p["password_hash"]):
         return jsonify({"error": "Неверный пароль!"}), 401
 
@@ -517,14 +549,13 @@ def change_password():
     if len(new_password) < 4 or len(new_password) > 64:
         return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
 
-    profiles = db_select("profiles", params={"select": "*", "name": f"eq.{name}"})
-    if not profiles:
+    p = find_profile(name)
+    if not p:
         return jsonify({"error": "Пользователь не найден"}), 404
-    p = profiles[0]
     if not p.get("password_hash") or not verify_password(old_password, p["password_hash"]):
         return jsonify({"error": "Неверный текущий пароль"}), 401
 
-    db_update("profiles", {"password_hash": hash_password(new_password)}, "name", name)
+    db_update("profiles", {"password_hash": hash_password(new_password)}, "name", p["name"])
     return jsonify({"status": "ok"})
 
 
