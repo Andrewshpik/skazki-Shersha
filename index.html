@@ -677,6 +677,7 @@
             
             <div class="header-controls">
                 <span class="user-info" id="headerProfileBtn" onclick="showPage('profile')">👋 Гость</span>
+                <a class="logout-icon" id="adminPanelBtn" href="admin.html" title="Админ-панель" aria-label="Открыть админ-панель" style="display:none; text-decoration:none;">🛡️</a>
                 <button class="logout-icon" id="headerLogoutBtn" title="Выйти" aria-label="Выйти из аккаунта" style="display: none;">🚪</button>
                 <button class="bell-btn" id="bellBtn" title="Новые комментарии к вашим историям" aria-label="Уведомления о новых комментариях" aria-live="polite" style="position:relative; display:none;">🔔<span class="bell-badge" id="bellBadge" style="display:none;"></span></button>
                 <select id="themeSelect" class="theme-toggle" title="Выбрать тему">
@@ -1353,6 +1354,12 @@
                 logoutBtn.style.display = 'block';
             } else {
                 logoutBtn.style.display = 'none';
+            }
+
+            // Кнопка админ-панели видна только администратору
+            const adminBtn = document.getElementById('adminPanelBtn');
+            if (adminBtn) {
+                adminBtn.style.display = (userData.name && !userData.isGuest && userData.is_admin) ? 'block' : 'none';
             }
 
             // Колокольчик уведомлений виден только залогиненным

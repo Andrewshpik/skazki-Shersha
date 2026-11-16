@@ -916,7 +916,9 @@ def report():
 
 @app.route("/api/reports", methods=["GET"])
 def list_reports():
-    # доступно всем (для модерации); пока просто возвращаем список по дате
+    user = (request.args.get("user") or "").strip()
+    if not _is_admin_name(user):
+        return jsonify({"error": "Нет прав"}), 403
     rows = db_select("reports", params={"select": "*", "order": "created_at.desc"})
     return jsonify(rows)
 
@@ -964,6 +966,103 @@ def check_ban():
         return jsonify({"banned": False})
     rows = db_select("banned", params={"select": "name", "name": f"eq.{name}"})
     return jsonify({"banned": bool(rows)})
+
+
+# --- Админ-панель ---
+def _is_admin_name(name):
+    """Проверяет, что у профиля с таким именем стоит флаг администратора."""
+    if not name:
+        return False
+    try:
+        rows = db_select("profiles", params={"select": "is_admin", "name": f"eq.{name}"})
+    except Exception:
+        return False
+    return bool(rows and rows[0].get("is_admin"))
+
+
+@app.route("/api/admin/overview", methods=["GET"])
+def admin_overview():
+    """Одна пачка данных для админки: пользователи, баны, жалобы, посты, комментарии."""
+    user = (request.args.get("user") or "").strip()
+    if not _is_admin_name(user):
+        return jsonify({"error": "Нет прав"}), 403
+
+    def safe(table, params):
+        try:
+            return db_select(table, params=params)
+        except Exception:
+            return []
+
+    users = safe("profiles", {"select": "name,nickname,bio,avatar,is_admin,telegram_id", "order": "name.asc"})
+    banned = safe("banned", {"select": "*", "order": "created_at.desc"})
+    reports = safe("reports", {"select": "*", "order": "created_at.desc"})
+    posts = safe("posts", {"select": "id,author,title,text,date,image,likes", "order": "id.desc"})
+    comments = safe("comments", {"select": "id,post_id,author,text,date", "order": "id.desc"})
+
+    post_titles = {str(p.get("id")): (p.get("title") or "") for p in posts}
+    comment_texts = {str(c.get("id")): (c.get("text") or "") for c in comments}
+    for r in reports:
+        target_id = str(r.get("target_id") or "")
+        if r.get("type") == "post":
+            r["preview"] = post_titles.get(target_id, "")
+            r["gone"] = target_id not in post_titles
+        elif r.get("type") == "comment":
+            r["preview"] = comment_texts.get(target_id, "")
+            r["gone"] = target_id not in comment_texts
+        else:
+            r["preview"] = ""
+            r["gone"] = False
+
+    banned_names = {b.get("name") for b in banned}
+    posts_by_author = {}
+    for p in posts:
+        author = p.get("author") or ""
+        posts_by_author[author] = posts_by_author.get(author, 0) + 1
+    comments_by_author = {}
+    for c in comments:
+        author = c.get("author") or ""
+        comments_by_author[author] = comments_by_author.get(author, 0) + 1
+
+    for u in users:
+        u["posts_count"] = posts_by_author.get(u.get("name"), 0)
+        u["comments_count"] = comments_by_author.get(u.get("name"), 0)
+        u["banned"] = u.get("name") in banned_names
+        u["telegram"] = bool(u.pop("telegram_id", None))
+
+    return jsonify({
+        "stats": {
+            "users": len(users), "posts": len(posts), "comments": len(comments),
+            "reports": len(reports), "banned": len(banned),
+        },
+        "users": users,
+        "banned": banned,
+        "reports": reports,
+        "posts": [{
+            "id": p.get("id"), "author": p.get("author") or "", "title": p.get("title") or "",
+            "date": p.get("date"), "likes": p.get("likes") or 0,
+            "text": (p.get("text") or "")[:500],
+        } for p in posts],
+        "comments": [{
+            "id": c.get("id"), "post_id": c.get("post_id"), "author": c.get("author") or "",
+            "text": c.get("text") or "", "date": c.get("date"),
+        } for c in comments[:200]],
+    })
+
+
+@app.route("/api/admin/user", methods=["PATCH"])
+def admin_update_user():
+    """Меняет флаг администратора у профиля. Доступно только администратору."""
+    data = request.json or {}
+    admin = (data.get("user") or "").strip()
+    target = (data.get("target") or "").strip()
+    if not _is_admin_name(admin) or not target:
+        return jsonify({"error": "Нет прав или нет цели"}), 403
+    if "is_admin" not in data:
+        return jsonify({"error": "Нет данных для обновления"}), 400
+    if target == admin and not bool(data.get("is_admin")):
+        return jsonify({"error": "Нельзя снять права с самого себя"}), 400
+    db_update("profiles", {"is_admin": bool(data.get("is_admin"))}, "name", target)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/upload", methods=["POST"])
