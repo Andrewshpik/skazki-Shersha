@@ -104,18 +104,27 @@
             select.appendChild(option);
         });
         if (current) select.value = current;
-        warnAboutVoices(list.length);
+        warnAboutVoices(russianVoiceCount());
+    }
+
+    function russianVoiceCount() {
+        if (!supported) return 0;
+        return (synth.getVoices() || []).filter(v => /^ru([-_]|$)/i.test(v.lang || '')).length;
     }
 
     function warnAboutVoices(count) {
-        if (count > 2) return;
+        let message = '';
+        if (count === 0) {
+            message = 'В системе нет русского голоса. Windows: Параметры → Время и язык → Язык и регион → Русский → «Речь». Либо откройте сайт в Edge.';
+        } else if (count <= 2) {
+            message = 'Голосов в системе мало. Windows 11: Параметры → Время и язык → Речь → Добавить голоса';
+        }
+        if (!message) return;
         let warned = false;
         try { warned = sessionStorage.getItem('shersh_voice_hint') === '1'; } catch (e) { warned = false; }
         if (warned) return;
         try { sessionStorage.setItem('shersh_voice_hint', '1'); } catch (e) { /* приватный режим */ }
-        if (typeof showToast === 'function') {
-            showToast('Голосов в системе мало. Windows 11: Параметры → Время и язык → Речь → Добавить голоса');
-        }
+        if (typeof showToast === 'function') showToast(message);
     }
 
     function buildBar() {
