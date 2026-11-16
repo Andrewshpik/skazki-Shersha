@@ -942,6 +942,10 @@
                     )
                 });
                     const data = await res.json().catch(() => ({}));
+                if (res.status === 401) {
+                    // токен истёк или сессия устарела — просим войти заново
+                    clearSession();
+                }
                     if (!res.ok) {
                         // 5xx — сервер просыпается, пробуем ещё; 4xx — повторять бессмысленно
                         if (res.status >= 500 && i < attempts - 1) {
