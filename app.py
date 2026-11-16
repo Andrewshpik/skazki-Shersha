@@ -794,6 +794,7 @@ def list_posts():
             "id": r["id"], "title": r["title"], "text": r["text"],
             "author": r["author"], "date": r["date"], "image": r.get("image"),
             "likes": len(r.get("likes") or []) if False else r.get("likes", 0),
+            "views": r.get("views"),
             "comments": (r.get("comments") or []),
         })
     return jsonify(result)
@@ -940,6 +941,22 @@ def delete_post(post_id):
         db_delete("posts", "id", post_id)
         return jsonify({"status": "ok"})
     return jsonify({"error": "Нет прав на удаление этого поста"}), 403
+
+
+# --- Просмотры ---
+@app.route("/api/posts/<int:post_id>/view", methods=["POST"])
+@rate_limit(limit=120, window=60)  # не больше 120 просмотров в минуту с одного IP
+def add_view(post_id):
+    """Считает открытия истории. Пока в таблице нет колонки views — молча ничего не делает."""
+    try:
+        rows = db_select("posts", params={"select": "id,views", "id": f"eq.{post_id}"})
+        if not rows:
+            return jsonify({"status": "ok", "views": None})
+        current = int(rows[0].get("views") or 0)
+        db_update("posts", {"views": current + 1}, "id", post_id)
+        return jsonify({"status": "ok", "views": current + 1})
+    except Exception:
+        return jsonify({"status": "ok", "views": None})
 
 
 # --- Лайки ---
