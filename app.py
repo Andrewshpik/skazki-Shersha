@@ -988,10 +988,18 @@ def admin_overview():
         return jsonify({"error": "Нет прав"}), 403
 
     def safe(table, params):
-        try:
-            return db_select(table, params=params)
-        except Exception:
-            return []
+        """Читает таблицу; если сортировка по полю не поддерживается — читает без неё."""
+        attempts = [params]
+        if "order" in params:
+            plain = dict(params)
+            plain.pop("order")
+            attempts.append(plain)
+        for attempt in attempts:
+            try:
+                return db_select(table, params=attempt)
+            except Exception:
+                continue
+        return []
 
     users = safe("profiles", {"select": "name,nickname,bio,avatar,is_admin,telegram_id", "order": "name.asc"})
     banned = safe("banned", {"select": "*", "order": "created_at.desc"})
