@@ -177,6 +177,16 @@
         }
         .search-bar input:focus { outline: none; border-color: var(--gold-accent); }
 
+        .search-bar { display: flex; gap: 10px; }
+        .search-bar input { flex-grow: 1; }
+        .sort-select {
+            background-color: var(--card-bg); color: var(--text-color);
+            border: 2px solid var(--border-color); border-radius: 20px;
+            padding: 12px 16px; font-size: 1rem; font-family: inherit; cursor: pointer;
+        }
+        .sort-select:focus { outline: none; border-color: var(--gold-accent); }
+        @media (max-width: 768px) { .search-bar { flex-direction: column; } }
+
         .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; }
         .toast {
             background-color: var(--card-bg); color: var(--text-color); padding: 15px 20px;
@@ -294,6 +304,7 @@
             font-size: 0.85rem; color: #888; transition: all 0.2s; border: 1px solid var(--border-color);
         }
         .hint-tag:hover { background-color: var(--gold-accent); color: #333; border-color: var(--gold-accent); }
+        .post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; }
 
         .modal-buttons { display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px; flex-wrap: wrap; }
         .btn-cancel { background-color: transparent; color: var(--text-color); border: 2px solid var(--border-color); }
@@ -492,6 +503,10 @@
         </div>
         <div class="search-bar" id="searchContainer">
             <input type="text" id="searchInput" placeholder="🔍 Поиск по историям..." oninput="filterPosts()">
+            <select id="sortSelect" class="sort-select" onchange="changeSort()">
+                <option value="new">Новые</option>
+                <option value="popular">Популярные</option>
+            </select>
         </div>
     </header>
 
@@ -527,6 +542,7 @@
         
         <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
             <button class="btn" id="editProfileBtn">Редактировать профиль</button>
+            <button class="btn btn-cancel" id="changePassBtn">Сменить пароль</button>
             <button class="btn btn-cancel" id="logoutBtn">Выйти</button>
             <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
         </div>
@@ -658,6 +674,15 @@
         let usersMap = {}; // name -> profile (для аватаров/ников)
         const POSTS_CACHE_KEY = 'shersh_posts_cache';
 
+        // Извлечение тегов вида #тег из текста
+        function extractTags(text) {
+            const matches = String(text || '').match(/#([\wа-яёА-ЯЁ]+)/g) || [];
+            const tags = [...new Set(matches.map(m => m.slice(1).toLowerCase()))];
+            return tags.slice(0, 6);
+        }
+
+        let activeTag = null; // активный фильтр по тегу
+
         async function loadPosts() {
             // Показываем скелетон только если нет кеша (первый заход)
             if (!localStorage.getItem(POSTS_CACHE_KEY)) showFeedSkeleton();
@@ -674,7 +699,8 @@
                 posts = rows.map(r => ({
                     id: r.id, title: r.title, text: r.text, author: r.author,
                     date: r.date, image: r.image, likes: r.likes || 0,
-                    comments: r.comments || [], isLiked: likedSet.has(r.id)
+                    comments: r.comments || [], isLiked: likedSet.has(r.id),
+                    tags: extractTags(r.title + ' ' + r.text)
                 }));
                 localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
@@ -980,6 +1006,18 @@
         document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
         document.getElementById('headerLogoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
 
+        document.getElementById('changePassBtn').addEventListener('click', async () => {
+            const oldPass = window.prompt('Текущий пароль:');
+            if (oldPass === null) return;
+            const newPass = window.prompt('Новый пароль (от 4 символов):');
+            if (newPass === null) return;
+            if (!newPass.trim()) { showToast('Пароль не может быть пустым', true); return; }
+            try {
+                await api('/api/password', { method: 'POST', body: JSON.stringify({ name: userData.name, old_password: oldPass, new_password: newPass.trim() }) });
+                showToast('Пароль обновлён!');
+            } catch (e) { showToast(e.message, true); }
+        });
+
         document.getElementById('deleteAccountBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'flex'; });
         document.getElementById('cancelDeleteBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'none'; });
         document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
@@ -1047,7 +1085,11 @@
 
             if (visibleCount > posts.length) visibleCount = posts.length;
 
+            let shown = 0;
             posts.slice(0, visibleCount).forEach((post, index) => {
+                // фильтр по активному тегу
+                if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
+                shown++;
                 const postElement = document.createElement('article');
                 postElement.className = 'post-card';
                 const dateStr = formatDate(post.date);
@@ -1070,6 +1112,9 @@
                 `;
 
                 const imageHTML = post.image ? `<img src="${post.image}" class="post-image" onclick="openImageModal('${post.image}')">` : '';
+                const tagsHTML = (post.tags && post.tags.length)
+                    ? `<div class="post-tags">${post.tags.map(t => `<span class="hint-tag" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)}</span>`).join('')}</div>`
+                    : '';
 
                 postElement.innerHTML = `
                     <div class="post-header-row">
@@ -1084,6 +1129,7 @@
                     </div>
                     ${imageHTML}
                     <div class="post-content"><p>${escapeHTML(post.text)}</p></div>
+                    ${tagsHTML}
                     <div class="post-actions">
                         <button class="action-btn ${post.isLiked ? 'liked' : ''}" onclick="toggleLike(${index})">
                             👍 Нравится (<span>${post.likes}</span>)
@@ -1119,6 +1165,32 @@
                 if (title.includes(query) || text.includes(query)) { card.style.display = 'block'; } else { card.style.display = 'none'; }
             });
         }
+
+        // Фильтр по тегу (клик по #тег)
+        window.filterByTag = function(tag) {
+            if (activeTag === tag) {
+                activeTag = null;
+                showToast('Фильтр по тегу снят');
+            } else {
+                activeTag = tag;
+                showToast('Показаны истории с тегом #' + tag);
+            }
+            renderPosts();
+        };
+
+        // Сортировка: новые (по дате) или популярные (по лайкам)
+        window.changeSort = function() {
+            const mode = document.getElementById('sortSelect').value;
+            const arr = [...posts];
+            if (mode === 'popular') {
+                arr.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+            } else {
+                arr.sort((a, b) => new Date(b.date) - new Date(a.date));
+            }
+            posts = arr;
+            visibleCount = postsPerPage;
+            renderPosts();
+        };
 
         window.sharePost = function(index) {
             const post = posts[index];

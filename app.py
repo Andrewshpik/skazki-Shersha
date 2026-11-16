@@ -289,6 +289,30 @@ def delete_profile():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/password", methods=["POST"])
+@rate_limit(limit=10, window=300)  # не больше 10 смен пароля с одного IP за 5 минут
+def change_password():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    old_password = (data.get("old_password") or "")
+    new_password = (data.get("new_password") or "")
+
+    if not name:
+        return jsonify({"error": "Требуется авторизация"}), 401
+    if len(new_password) < 4 or len(new_password) > 64:
+        return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
+
+    profiles = db_select("profiles", params={"select": "*", "name": f"eq.{name}"})
+    if not profiles:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    p = profiles[0]
+    if not p.get("password_hash") or not verify_password(old_password, p["password_hash"]):
+        return jsonify({"error": "Неверный текущий пароль"}), 401
+
+    db_update("profiles", {"password_hash": hash_password(new_password)}, "name", name)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/liked", methods=["GET"])
 def liked_posts():
     user = request.args.get("user", "").strip()
