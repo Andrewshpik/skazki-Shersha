@@ -586,15 +586,9 @@
         (function () {
             const banner = document.getElementById('feedBanner');
             if (!banner) return;
-            let ticking = false;
-            window.addEventListener('scroll', () => {
-                if (ticking) return;
-                ticking = true;
-                window.requestAnimationFrame(() => {
-                    banner.classList.toggle('is-collapsed', window.scrollY > 120);
-                    ticking = false;
-                });
-            }, { passive: true });
+            const sync = () => banner.classList.toggle('is-collapsed', window.scrollY > 120);
+            window.addEventListener('scroll', sync, { passive: true });
+            sync();
         })();
 
         function updateProfileUI() {
