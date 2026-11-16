@@ -319,6 +319,10 @@
         .hint-tag:hover { background-color: var(--gold-accent); color: #333; border-color: var(--gold-accent); }
         .post-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; }
 
+        .rules-text { font-size: 0.98rem; line-height: 1.6; color: var(--text-color); }
+        .rules-text ol { padding-left: 20px; margin: 10px 0; }
+        .rules-text li { margin-bottom: 8px; }
+
         .modal-buttons { display: flex; justify-content: flex-end; gap: 15px; margin-top: 25px; flex-wrap: wrap; }
         .btn-cancel { background-color: transparent; color: var(--text-color); border: 2px solid var(--border-color); }
         .btn-cancel:hover { background-color: var(--comment-bg); }
@@ -1612,6 +1616,21 @@ const deleteBtn = own
         }
         init();
 
+        // Открытие модалок "О проекте" и "Правила"
+        window.showAbout = function() { document.getElementById('aboutModal').style.display = 'flex'; };
+        window.showRules = function() { document.getElementById('rulesModal').style.display = 'flex'; };
+
+        // Поддержка проекта (без платежей — контакт создателя / копия ссылки на репозиторий)
+        window.supportProject = function() {
+            if (navigator.share) {
+                navigator.share({ title: 'Сказки Шерша', text: 'Поддержите уютное сообщество сказок!', url: location.href }).catch(() => {});
+                return;
+            }
+            navigator.clipboard.writeText(location.href)
+                .then(() => showToast('Ссылка на проект скопирована. Спасибо за поддержку!'))
+                .catch(() => showToast('Не удалось скопировать', true));
+        };
+
         // Динамический Open Graph: если открыт пост по #post-<id>, обновляем OG-теги для карточки при шеринге
         function updateOGForCurrentPost() {
             const m = location.hash.match(/^#post-(\d+)/);
@@ -1626,6 +1645,50 @@ const deleteBtn = own
         window.addEventListener('hashchange', updateOGForCurrentPost);
         setTimeout(updateOGForCurrentPost, 1500);
     </script>
+
+    <!-- Футер -->
+    <footer style="max-width: 800px; margin: 30px auto 20px; padding: 20px 15px 10px; border-top: 1px solid var(--border-color); text-align: center; font-size: 0.9rem; color: #888;">
+        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px;">
+            <a href="#" style="color: var(--gold-accent); text-decoration: none;" onclick="showAbout()">О проекте</a>
+            <a href="#" style="color: var(--gold-accent); text-decoration: none;" onclick="showRules()">Правила сообщества</a>
+            <a href="#" style="color: var(--gold-accent); text-decoration: none;" onclick="supportProject()">🤍 Поддержать проект</a>
+        </div>
+        <div>© Сказки Шерша · сделано с любовью к сказкам ✨</div>
+    </footer>
+
+    <!-- Модалка: О проекте -->
+    <div class="modal-overlay" id="aboutModal">
+        <div class="modal-content">
+            <h2>👑 О проекте</h2>
+            <div class="rules-text">
+                <p><b>«Сказки Шерша»</b> — уютное сообщество, где каждый может поделиться сказкой, историей из жизни или театральным закулисьем.</p>
+                <p>Мы верим, что у каждой истории есть своя магия. Расскажите свою — и она найдёт читателей.</p>
+                <p>Проект создан с любовью к сказкам и поддерживается сообществом.</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn" onclick="document.getElementById('aboutModal').style.display='none'">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: Правила сообщества -->
+    <div class="modal-overlay" id="rulesModal">
+        <div class="modal-content">
+            <h2>📜 Правила сообщества</h2>
+            <div class="rules-text">
+                <ol>
+                    <li>Будьте доброжелательны и уважайте других участников.</li>
+                    <li>Запрещены оскорбления, нецензурная лексика и травля.</li>
+                    <li>Запрещена реклама и спам.</li>
+                    <li>Не публикуйте чужие тексты без разрешения автора.</li>
+                    <li>За нарушение правил модератор может заблокировать аккаунт.</li>
+                </ol>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn" onclick="document.getElementById('rulesModal').style.display='none'">Закрыть</button>
+            </div>
+        </div>
+    </div>
 
 </body>
 </html>
