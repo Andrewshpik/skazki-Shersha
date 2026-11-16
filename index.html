@@ -693,6 +693,7 @@
         <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
             <button class="btn" id="editProfileBtn">Редактировать профиль</button>
             <button class="btn btn-cancel" id="changePassBtn">Сменить пароль</button>
+            <button class="btn btn-cancel" id="bindTelegramBtn" title="Привязать Telegram, чтобы получать код восстановления пароля">📨 Привязать Telegram</button>
             <button class="btn btn-cancel" id="logoutBtn">Выйти</button>
             <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
             <button class="btn btn-delete" id="deleteAllDataBtn" title="Удалить профиль, все свои истории, комментарии и лайки">🧹 Удалить все мои данные</button>
@@ -1378,6 +1379,14 @@
                 await api('/api/password', { method: 'POST', body: JSON.stringify({ name: userData.name, old_password: oldPass, new_password: newPass.trim() }) });
                 showToast('Пароль обновлён!');
             } catch (e) { showToast(e.message, true); }
+        });
+
+        // Привязка Telegram: открываем бота с payload bind_<имя>
+        document.getElementById('bindTelegramBtn').addEventListener('click', () => {
+            if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт', true); return; }
+            const url = 'https://t.me/shersh_auth_bot?start=' + encodeURIComponent('bind_' + userData.name);
+            window.open(url, '_blank');
+            showToast('Открой бота и нажми «Старт» — привязка произойдёт автоматически');
         });
 
         document.getElementById('deleteAccountBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'flex'; });

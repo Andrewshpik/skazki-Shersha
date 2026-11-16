@@ -4,6 +4,8 @@ import time
 import binascii
 import uuid
 import secrets
+import urllib.parse
+from datetime import datetime, timedelta, timezone
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -114,10 +116,39 @@ def contains_profanity(text):
     return False
 
 
-# --- Хранение сессий Telegram (код -> пользователь) ---
-sessions = {}
-# Коды восстановления пароля: code -> {"name": ..., "expires": ts}
-reset_codes = {}
+# --- Сессии Telegram и коды восстановления храним в БД: память умирает при сне/рестарте ---
+def _iso_in(seconds):
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+
+
+def _iso_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _db_cleanup(table):
+    try:
+        requests.delete(f"{SUPABASE_REST}/{table}?expires=lt.{_iso_now()}",
+                        headers=_HEADERS, timeout=10)
+    except Exception:
+        pass
+
+
+def _tg_send(chat_id, text):
+    if not BOT_TOKEN or not chat_id:
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                      json={"chat_id": chat_id, "text": text}, timeout=15)
+    except Exception:
+        pass
+
+
+def _is_expired(value):
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) > parsed
+    except Exception:
+        return False
 
 
 @app.route("/", methods=["GET"])
@@ -125,35 +156,86 @@ def home():
     return {"status": "ok", "service": "Skazki Shersha API"}
 
 
-# --- TeleGRAM вход (без изменений) ---
+# --- Telegram: вход по коду, привязка профиля ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
-    if "message" in data and "text" in data["message"]:
-        text = data["message"]["text"]
-        if text.startswith("/start "):
-            code = text.split(" ")[1]
-            user = data["message"]["from"]
-            sessions[code] = {
-                "id": user["id"],
-                "first_name": user.get("first_name", "Друг"),
-                "username": user.get("username", ""),
-            }
-            if BOT_TOKEN:
-                requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={
-                    "chat_id": user["id"],
-                    "text": "✅ Вы успешно вошли на сайт «Сказки Шерша»! Можете вернуться в браузер.",
-                })
+    data = request.json or {}
+    msg = data.get("message") or {}
+    text = (msg.get("text") or "").strip()
+    frm = msg.get("from") or {}
+    if not text or not frm.get("id"):
+        return "ok", 200
+
+    if text.startswith("/start"):
+        payload = urllib.parse.unquote(text[len("/start"):].strip())
+
+        if not payload:
+            _tg_send(frm["id"],
+                     "Привет! Это бот «Сказок Шерша».\n\n"
+                     "• Вход на сайт: нажмите на сайте «Войти через Telegram».\n"
+                     "• Привязка для восстановления пароля: откройте профиль на сайте и нажмите «Привязать Telegram».")
+            return "ok", 200
+
+        if payload.startswith("bind_"):
+            name = payload[len("bind_"):].strip()
+            try:
+                profiles = db_select("profiles", params={"select": "name", "name": f"eq.{name}"})
+            except Exception:
+                profiles = []
+            if not profiles:
+                _tg_send(frm["id"], f"Профиль «{name}» не найден. Проверьте имя на сайте.")
+                return "ok", 200
+            try:
+                db_update("profiles", {"telegram_id": str(frm["id"])}, "name", name)
+                _tg_send(frm["id"], f"✅ Telegram привязан к профилю «{name}». Сюда придёт код восстановления пароля.")
+            except Exception:
+                _tg_send(frm["id"], "Не удалось привязать Telegram. Попробуйте позже.")
+            return "ok", 200
+
+        # вход по коду с сайта
+        code = payload
+        try:
+            _db_cleanup("tg_sessions")
+            db_delete("tg_sessions", "code", code)
+            db_insert("tg_sessions", {
+                "code": code, "tg_id": int(frm["id"]),
+                "first_name": frm.get("first_name", "Друг"),
+                "username": frm.get("username", ""),
+                "expires": _iso_in(600),
+            })
+        except Exception:
+            pass
+        _tg_send(frm["id"], "✅ Вы успешно вошли на сайт «Сказки Шерша»! Можете вернуться в браузер.")
     return "ok", 200
 
 
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
     code = request.args.get("code")
-    if code in sessions:
-        user_data = sessions.pop(code)
-        return jsonify({"status": "ok", "user": user_data})
-    return jsonify({"status": "waiting"}), 200
+    if not code:
+        return jsonify({"status": "waiting"}), 200
+    try:
+        rows = db_select("tg_sessions", params={"select": "*", "code": f"eq.{code}"})
+    except Exception:
+        rows = []
+    if not rows:
+        return jsonify({"status": "waiting"}), 200
+    row = rows[0]
+    if _is_expired(row.get("expires")):
+        try:
+            db_delete("tg_sessions", "code", code)
+        except Exception:
+            pass
+        return jsonify({"status": "waiting"}), 200
+    try:
+        db_delete("tg_sessions", "code", code)
+    except Exception:
+        pass
+    return jsonify({"status": "ok", "user": {
+        "id": row.get("tg_id"),
+        "first_name": row.get("first_name") or "Друг",
+        "username": row.get("username") or "",
+    }})
 
 
 # Привязка telegram_id к профилю (вход точно по именам)
@@ -185,11 +267,13 @@ def forgot_password():
         return jsonify({"error": "К этому профилю не привязан Telegram"}), 400
 
     code = str(secrets.randbelow(1000000)).zfill(6)
-    reset_codes[code] = {"name": name, "expires": time.time() + 600}  # действует 10 минут
-    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={
-        "chat_id": tid,
-        "text": f"🔑 Код восстановления пароля на сайте «Сказки Шерша»: {code}\nВведите его на сайте. Код действителен 10 минут.",
-    })
+    try:
+        _db_cleanup("reset_codes")
+        db_delete("reset_codes", "name", name)
+        db_insert("reset_codes", {"code": code, "name": name, "expires": _iso_in(600)})
+    except Exception:
+        return jsonify({"error": "Не удалось создать код, попробуйте позже"}), 500
+    _tg_send(tid, f"🔑 Код восстановления пароля на сайте «Сказки Шерша»: {code}\nВведите его на сайте. Код действителен 10 минут.")
     return jsonify({"status": "ok"})
 
 
@@ -202,11 +286,24 @@ def reset_password():
     new_password = data.get("new_password") or ""
     if len(new_password) < 4 or len(new_password) > 64:
         return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
-    entry = reset_codes.get(code)
-    if not entry or time.time() > entry["expires"]:
+    try:
+        rows = db_select("reset_codes", params={"select": "name,expires", "code": f"eq.{code}"})
+    except Exception:
+        rows = []
+    if not rows:
         return jsonify({"error": "Неверный или истёкший код"}), 400
-    name = entry["name"]
-    del reset_codes[code]
+    row = rows[0]
+    if _is_expired(row.get("expires")):
+        try:
+            db_delete("reset_codes", "code", code)
+        except Exception:
+            pass
+        return jsonify({"error": "Неверный или истёкший код"}), 400
+    name = row.get("name")
+    try:
+        db_delete("reset_codes", "code", code)
+    except Exception:
+        pass
     db_update("profiles", {"password_hash": hash_password(new_password)}, "name", name)
     return jsonify({"status": "ok"})
 
