@@ -1381,6 +1381,16 @@
         document.getElementById('logoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
         document.getElementById('headerLogoutBtn').addEventListener('click', () => { localStorage.removeItem('shersh_user'); location.reload(); });
 
+        // Общий выход из ситуации «сервер не знает такого профиля» (устаревшая сессия)
+        function handleStaleProfile(message) {
+            if (!/не найден/i.test(String(message || ''))) return false;
+            localStorage.removeItem('shersh_user');
+            localStorage.removeItem('shersh_seen_comments');
+            showToast('Профиль не найден — сессия устарела. Войдите заново', true);
+            setTimeout(() => location.reload(), 1600);
+            return true;
+        }
+
         document.getElementById('changePassBtn').addEventListener('click', async () => {
             const oldPass = window.prompt('Текущий пароль:');
             if (oldPass === null) return;
@@ -1390,7 +1400,10 @@
             try {
                 await api('/api/password', { method: 'POST', body: JSON.stringify({ name: userData.name, old_password: oldPass, new_password: newPass.trim() }) });
                 showToast('Пароль обновлён!');
-            } catch (e) { showToast(e.message, true); }
+            } catch (e) {
+                if (handleStaleProfile(e.message)) return;
+                showToast(e.message, true);
+            }
         });
 
         // --- Статус привязки Telegram в профиле ---
@@ -2237,11 +2250,28 @@
 
         async function init() {
             await loadProfiles();
+            validateStoredSession();
             await loadPosts();
             checkAuth();
             if (userData.name && !userData.isGuest) updateLikedSet();
         }
         init();
+
+        // Если в браузере осталась сессия удалённого профиля — не даём пользователю
+        // получать загадочное «Пользователь не найден» при смене пароля.
+        function validateStoredSession() {
+            if (!userData.name || userData.isGuest) return false;
+            const known = Object.keys(usersMap || {});
+            if (!known.length) return false;
+            if (usersMap[userData.name]) return false;
+
+            const stale = userData.name;
+            localStorage.removeItem('shersh_user');
+            localStorage.removeItem('shersh_seen_comments');
+            userData = { name: '', nickname: '', bio: '', avatar: '', isGuest: true };
+            showToast('Профиль «' + stale + '» больше не существует — войдите заново', true);
+            return true;
+        }
 
         // Открытие модалок "О проекте" и "Правила"
         window.showAbout = function() { document.getElementById('aboutModal').style.display = 'flex'; };
