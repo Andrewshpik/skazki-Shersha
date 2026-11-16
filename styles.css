@@ -513,3 +513,32 @@
             .modal-buttons { flex-direction: column; }
             .modal-buttons .btn { width: 100%; }
         }
+
+        /* Плеер сказок: озвучка голосами браузера */
+        .audio-bar {
+            position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+            width: min(560px, calc(100% - 24px)); z-index: 3000;
+            display: none; padding: 10px 12px;
+            background: var(--card-bg); color: var(--text-color);
+            border: 1px solid var(--border-color); border-radius: 14px;
+            box-shadow: var(--shadow);
+        }
+        .audio-bar.is-open { display: block; }
+        .audio-bar__title {
+            font-size: 0.9rem; font-weight: 700; margin-bottom: 8px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .audio-bar__row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .audio-btn {
+            width: 38px; height: 34px; border: none; border-radius: 10px; cursor: pointer;
+            background: var(--gold-accent); color: #2c3e50; font-size: 0.95rem; line-height: 1;
+            transition: background-color 0.2s, transform 0.2s;
+        }
+        .audio-btn:hover { background: var(--gold-hover); transform: scale(1.05); }
+        .audio-bar__pos { flex: 1; min-width: 96px; font-size: 0.8rem; opacity: 0.75; }
+        .audio-bar__rate { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; }
+        .audio-bar__rate select {
+            font: inherit; padding: 4px 6px; border-radius: 8px; cursor: pointer;
+            background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color);
+        }
+        @media print { .audio-bar { display: none !important; } }

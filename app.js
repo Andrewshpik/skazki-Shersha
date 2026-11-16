@@ -1066,6 +1066,9 @@
                         <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
                             🔗 Поделиться
                         </button>
+                        <button class="action-btn" onclick="speakPost(${index})" title="Слушать сказку" aria-label="Слушать сказку">
+                            🔊 Слушать
+                        </button>
                         ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться" aria-label="Пожаловаться на историю">🚩</button>` : ''}
                     </div>
                 `;
