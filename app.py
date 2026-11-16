@@ -356,12 +356,21 @@ def delete_profile_full():
 
     removed = {"posts": 0, "comments": 0, "likes": 0}
 
+    def count_rows(table, field, value):
+        try:
+            rows = db_select(table, params={"select": "id", field: f"eq.{value}"})
+            return len(rows or [])
+        except Exception:
+            return 0
+
     try:
         own_posts = db_select("posts", params={"select": "id", "author": f"eq.{name}"})
     except Exception:
         own_posts = []
     for p in own_posts or []:
         pid = p.get("id")
+        removed["comments"] += count_rows("comments", "post_id", pid)
+        removed["likes"] += count_rows("likes", "post_id", pid)
         try:
             db_delete("comments", "post_id", pid)
         except Exception:
@@ -376,6 +385,8 @@ def delete_profile_full():
         except Exception:
             pass
 
+    removed["comments"] += count_rows("comments", "author", name)
+    removed["likes"] += count_rows("likes", "author", name)
     try:
         db_delete("comments", "author", name)
     except Exception:
