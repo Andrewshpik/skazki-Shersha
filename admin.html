@@ -421,7 +421,7 @@
                 return row({
                     title: r.target_author ? 'На ' + r.target_author : 'На пользователя',
                     badges,
-                    meta: formatDate(r.created_at),
+                    meta: formatDate(r.created_at || r.report_date || r.date),
                     text: (r.reason ? 'Причина: ' + r.reason + '\n' : '') + (r.preview ? 'Содержание: ' + r.preview : ''),
                     actions
                 });
@@ -458,7 +458,7 @@
             box.innerHTML = list.map(b => row({
                 title: b.name,
                 badges: [{ label: 'забанен', cls: 'banned' }],
-                meta: formatDate(b.created_at),
+                meta: formatDate(b.ban_date || b.created_at),
                 text: b.reason || '',
                 actions: `<button class="btn btn-ghost btn-small" data-act="unban" data-name="${escapeHTML(b.name)}">Разбанить</button>`
             })).join('');
