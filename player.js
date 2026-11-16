@@ -6,6 +6,7 @@
     const synth = window.speechSynthesis;
     const supported = !!synth && typeof window.SpeechSynthesisUtterance === 'function';
     const POS_KEY = 'shersh_audio_pos';
+    const VOICE_KEY = 'shersh_audio_voice';
     const MIN_CHUNK = 140;
     const MAX_CHUNK = 260;
 
@@ -55,16 +56,66 @@
         return out.filter(Boolean);
     }
 
-    function ruVoice() {
-        if (!supported) return null;
-        const voices = synth.getVoices() || [];
-        const russian = voices.filter(v => /^ru\b|^ru[-_]/i.test(v.lang || ''));
-        return russian.find(v => /milena|alena|irina|katya|female|женск/i.test(v.name || '')) || russian[0] || null;
+    function voiceList() {
+        if (!supported) return [];
+        const all = synth.getVoices() || [];
+        const russian = all.filter(v => /^ru([-_]|$)/i.test(v.lang || ''));
+        return russian.length ? russian : all;
+    }
+
+    function preferredVoice() {
+        const list = voiceList();
+        if (!list.length) return null;
+        let saved = '';
+        try { saved = localStorage.getItem(VOICE_KEY) || ''; } catch (e) { saved = ''; }
+        if (saved) {
+            const found = list.find(v => v.name === saved);
+            if (found) return found;
+        }
+        // «Человеческие» голоса Windows и прочие женские — обычно звучат живее
+        return list.find(v => /svetlana|светлана|dmitry|дмитрий|milena|alena|irina|katya|female|женск/i.test(v.name || ''))
+            || list[0];
     }
 
     function ensureVoice() {
-        voice = ruVoice();
+        voice = preferredVoice();
+        fillVoiceSelect();
         return voice;
+    }
+
+    function fillVoiceSelect() {
+        if (!bar) return;
+        const select = bar.querySelector('#audioVoice');
+        if (!select) return;
+        const list = voiceList();
+        const current = voice ? voice.name : '';
+        select.textContent = '';
+        if (!list.length) {
+            const empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = 'нет голосов';
+            select.appendChild(empty);
+            return;
+        }
+        list.forEach(v => {
+            const option = document.createElement('option');
+            option.value = v.name;
+            option.textContent = v.name + (v.localService === false ? ' · онлайн' : '');
+            select.appendChild(option);
+        });
+        if (current) select.value = current;
+        warnAboutVoices(list.length);
+    }
+
+    function warnAboutVoices(count) {
+        if (count > 2) return;
+        let warned = false;
+        try { warned = sessionStorage.getItem('shersh_voice_hint') === '1'; } catch (e) { warned = false; }
+        if (warned) return;
+        try { sessionStorage.setItem('shersh_voice_hint', '1'); } catch (e) { /* приватный режим */ }
+        if (typeof showToast === 'function') {
+            showToast('Голосов в системе мало. Windows 11: Параметры → Время и язык → Речь → Добавить голоса');
+        }
     }
 
     function buildBar() {
@@ -80,6 +131,9 @@
                 <button type="button" class="audio-btn" id="audioPlay" aria-label="Пауза">⏸</button>
                 <button type="button" class="audio-btn" id="audioStop" aria-label="Остановить">⏹</button>
                 <span class="audio-bar__pos" id="audioPos" aria-live="polite"></span>
+                <label class="audio-bar__rate">Голос
+                    <select id="audioVoice" aria-label="Голос озвучки"></select>
+                </label>
                 <label class="audio-bar__rate">Скорость
                     <select id="audioRate" aria-label="Скорость чтения">
                         <option value="0.8">0.8×</option>
@@ -97,6 +151,15 @@
         bar.querySelector('#audioClose').addEventListener('click', () => { stop(); hide(); });
         bar.querySelector('#audioRate').addEventListener('change', (e) => {
             rate = parseFloat(e.target.value) || 1;
+            if (state === 'playing') {
+                const resumeAt = idx;
+                synth.cancel();
+                speakFrom(resumeAt);
+            }
+        });
+        bar.querySelector('#audioVoice').addEventListener('change', (e) => {
+            voice = voiceList().find(v => v.name === e.target.value) || voice;
+            try { localStorage.setItem(VOICE_KEY, voice ? voice.name : ''); } catch (err) { /* приватный режим */ }
             if (state === 'playing') {
                 const resumeAt = idx;
                 synth.cancel();
@@ -149,7 +212,7 @@
             const utterance = new SpeechSynthesisUtterance(queue[idx]);
             utterance.lang = 'ru-RU';
             utterance.rate = rate;
-            if (ensureVoice()) utterance.voice = voice;
+            if (voice) utterance.voice = voice;
             utterance.onend = () => {
                 if (myRun !== runId) return;
                 idx += 1;
@@ -207,6 +270,7 @@
         const saved = savedPosition(postKey);
         idx = saved > 0 && saved < queue.length ? saved : 0;
         showBar(postTitle || 'Сказка');
+        ensureVoice();
         speakFrom(idx);
     }
 
