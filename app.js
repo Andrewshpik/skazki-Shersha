@@ -505,7 +505,7 @@
             showToast('Вы вошли как Гость');
         });
 
-        const botUsername = "shersh_auth_bot"; 
+        const botUsername = "Shersh_authbot";
         let checkInterval = null;
 
         document.getElementById('telegramBotBtn').addEventListener('click', () => {
@@ -865,7 +865,7 @@
                 const data = await api('/api/telegram/bind-code', {
                     method: 'POST', body: JSON.stringify({ name: userData.name })
                 });
-                const url = 'https://t.me/shersh_auth_bot?start=b_' + encodeURIComponent(data.code);
+                const url = 'https://t.me/Shersh_authbot?start=b_' + encodeURIComponent(data.code);
                 if (win) win.location = url; else window.open(url, '_blank');
                 showToast('Открой бота и нажми «Старт» — привязка произойдёт автоматически');
                 startTgPolling();

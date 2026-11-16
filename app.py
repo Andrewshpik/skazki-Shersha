@@ -501,7 +501,7 @@ def forgot_password():
         low = reason.lower()
         if ("can't initiate" in low or "conversation" in low or "blocked" in low
                 or "chat not found" in low or "start" in low or "deactivated" in low):
-            return jsonify({"error": "Бот не может написать первым: откройте @shersh_auth_bot, "
+            return jsonify({"error": "Бот не может написать первым: откройте @Shersh_authbot, "
                                      "нажмите «Запустить» (и снимите блокировку, если ставили), затем повторите."}), 400
         return jsonify({"error": "Telegram не доставил код: " + reason[:120]}), 400
     return jsonify({"status": "ok"})
