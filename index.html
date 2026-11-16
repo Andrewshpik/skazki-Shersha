@@ -401,6 +401,16 @@
             .modal-buttons .btn { width: 100%; }
         }
     </style>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Сказки Шерша",
+      "url": "https://andrewshpik.github.io/skazki-Shersha/",
+      "description": "Уютное сообщество, где можно публиковать свои сказки, истории из жизни и театральные закулисья, делиться впечатлениями и общаться.",
+      "inLanguage": "ru"
+    }
+    </script>
 </head>
 <body>
 
@@ -1538,6 +1548,20 @@
             if (userData.name && !userData.isGuest) updateLikedSet();
         }
         init();
+
+        // Динамический Open Graph: если открыт пост по #post-<id>, обновляем OG-теги для карточки при шеринге
+        function updateOGForCurrentPost() {
+            const m = location.hash.match(/^#post-(\d+)/);
+            if (!m) return;
+            const post = posts.find(p => p.id === Number(m[1]));
+            if (!post) return;
+            const setMeta = (sel, val) => { const el = document.querySelector(sel); if (el) el.setAttribute('content', val); };
+            setMeta('meta[property="og:title"]', post.title);
+            setMeta('meta[property="og:description"]', (post.text || '').slice(0, 200));
+            if (post.image) setMeta('meta[property="og:image"]', post.image);
+        }
+        window.addEventListener('hashchange', updateOGForCurrentPost);
+        setTimeout(updateOGForCurrentPost, 1500);
     </script>
 
 </body>

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api
+
+Sitemap: https://andrewshpik.github.io/skazki-Shersha/sitemap.xml
