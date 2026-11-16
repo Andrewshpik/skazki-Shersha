@@ -347,6 +347,55 @@ def delete_profile():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/profile/full", methods=["DELETE"])
+def delete_profile_full():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "no name"}), 400
+
+    removed = {"posts": 0, "comments": 0, "likes": 0}
+
+    try:
+        own_posts = db_select("posts", params={"select": "id", "author": f"eq.{name}"})
+    except Exception:
+        own_posts = []
+    for p in own_posts or []:
+        pid = p.get("id")
+        try:
+            db_delete("comments", "post_id", pid)
+        except Exception:
+            pass
+        try:
+            db_delete("likes", "post_id", pid)
+        except Exception:
+            pass
+        try:
+            db_delete("posts", "id", pid)
+            removed["posts"] += 1
+        except Exception:
+            pass
+
+    try:
+        db_delete("comments", "author", name)
+    except Exception:
+        pass
+    try:
+        db_delete("likes", "author", name)
+    except Exception:
+        pass
+    try:
+        db_delete("reports", "target_author", name)
+    except Exception:
+        pass
+    try:
+        db_delete("profiles", "name", name)
+    except Exception:
+        pass
+
+    return jsonify({"status": "ok", "removed": removed})
+
+
 @app.route("/api/password", methods=["POST"])
 @rate_limit(limit=10, window=300)  # не больше 10 смен пароля с одного IP за 5 минут
 def change_password():

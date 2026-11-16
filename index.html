@@ -192,6 +192,32 @@
 
         .search-bar { display: flex; gap: 10px; }
         .search-bar input { flex-grow: 1; }
+        .search-status {
+            display: none; max-width: 800px; margin: 0 auto 12px; padding: 0 20px;
+            font-size: 0.9rem; color: var(--text-color); opacity: 0.75;
+        }
+        .all-tags-cloud {
+            max-width: 800px; margin: 0 auto 20px; padding: 12px 20px;
+            display: flex; flex-wrap: wrap; gap: 8px;
+            background: var(--card-bg); border-radius: 12px;
+        }
+        .hint-tag.active { outline: 2px solid var(--gold-accent); }
+
+        .my-posts-section { margin-top: 30px; }
+        .my-post-row {
+            display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+            padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+            align-items: baseline;
+        }
+        .my-post-row:last-child { border-bottom: none; }
+        .my-post-title { color: var(--text-color); font-weight: 600; text-decoration: none; }
+        .my-post-title:hover { color: var(--gold-accent); text-decoration: underline; }
+        .my-post-meta { font-size: 0.82rem; opacity: 0.7; white-space: nowrap; }
+        .post-card.flash { box-shadow: 0 0 0 3px var(--gold-accent); transition: box-shadow .3s; }
+        mark.search-hit {
+            background: var(--gold-accent, #f5c542); color: #1a1a1a;
+            padding: 0 2px; border-radius: 3px;
+        }
         .sort-select {
             background-color: var(--card-bg); color: var(--text-color);
             border: 2px solid var(--border-color); border-radius: 20px;
@@ -570,7 +596,7 @@
             </div>
         </div>
         <div class="search-bar" id="searchContainer">
-            <input type="text" id="searchInput" placeholder="🔍 Поиск по историям..." oninput="filterPosts()">
+            <input type="text" id="searchInput" placeholder="🔍 Поиск по историям, автору, #тегу..." oninput="onSearchInput()">
             <select id="sortSelect" class="sort-select" onchange="changeSort()">
                 <option value="new">Новые</option>
                 <option value="popular">Популярные</option>
@@ -581,7 +607,10 @@
     <main id="feed-page">
         <div style="text-align: center; margin-bottom: 20px;">
             <button class="btn" onclick="randomTale()" style="background-color: var(--card-bg); border: 2px solid var(--gold-accent);">🌙 Случайная сказка на ночь</button>
+            <button class="btn" id="allTagsBtn" onclick="toggleAllTags()" style="background-color: var(--card-bg); border: 2px solid var(--border-color);">🏷 Показать все теги</button>
+            <button class="btn" id="myOnlyBtn" onclick="toggleMyOnly()" style="background-color: var(--card-bg); border: 2px solid var(--border-color);">📖 Только мои истории</button>
         </div>
+        <div id="allTagsCloud" class="all-tags-cloud" style="display:none;"></div>
         <div id="posts-container"></div>
     </main>
 
@@ -617,6 +646,16 @@
             <button class="btn btn-cancel" id="changePassBtn">Сменить пароль</button>
             <button class="btn btn-cancel" id="logoutBtn">Выйти</button>
             <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
+            <button class="btn btn-delete" id="deleteAllDataBtn" title="Удалить профиль, все свои истории, комментарии и лайки">🧹 Удалить все мои данные</button>
+        </div>
+
+        <div class="my-posts-section">
+            <h3 style="margin-bottom: 12px;">📚 Мои истории <span id="myPostsCount" style="opacity:.7;font-weight:400;"></span></h3>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                <button class="btn btn-cancel" onclick="exportMyPosts('json')" title="Скачать все мои истории в JSON">⬇️ Экспорт в JSON</button>
+                <button class="btn btn-cancel" onclick="exportMyPosts('txt')" title="Скачать все мои истории в текстовом файле">⬇️ Экспорт в TXT</button>
+            </div>
+            <div id="myPostsList"></div>
         </div>
     </main>
 
@@ -1082,7 +1121,38 @@
             document.getElementById('statPosts').textContent = myPosts.length;
             document.getElementById('statLikes').textContent = totalLikes;
             document.getElementById('statComments').textContent = totalComments;
+
+            renderMyPosts(myPosts);
         }
+
+        function renderMyPosts(myPosts) {
+            const list = document.getElementById('myPostsList');
+            const countEl = document.getElementById('myPostsCount');
+            if (!list) return;
+            if (countEl) countEl.textContent = myPosts.length ? `(${myPosts.length})` : '';
+            if (!myPosts.length) {
+                list.innerHTML = '<p style="opacity:.7">Ты пока не написал ни одной истории.</p>';
+                return;
+            }
+            list.innerHTML = myPosts.map(p => `
+                <div class="my-post-row">
+                    <a href="#" class="my-post-title" onclick='scrollToPost(${p.id}); return false;'>${escapeHTML(p.title)}</a>
+                    <span class="my-post-meta">${formatDate(p.date)} · 👍 ${p.likes} · 💬 ${p.comments ? p.comments.length : 0}</span>
+                </div>
+            `).join('');
+        }
+
+        window.scrollToPost = function(id) {
+            showPage('feed');
+            const el = document.getElementById('post-' + id);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('flash');
+                setTimeout(() => el.classList.remove('flash'), 1600);
+            } else {
+                showToast('История есть дальше в ленте — прокрути или нажми «Показать ещё»');
+            }
+        };
 
         window.openAuthorProfile = function(authorName) {
             const author = usersMap[authorName];
@@ -1197,6 +1267,24 @@
             } catch (e) { showToast(e.message, true); }
         });
 
+        // Полное удаление всех своих данных
+        document.getElementById('deleteAllDataBtn').addEventListener('click', async () => {
+            if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт', true); return; }
+            const ok = confirm('Удалить профиль, ВСЕ свои истории, комментарии и лайки?\nЭто действие необратимо.');
+            if (!ok) return;
+            const typed = prompt('Для подтверждения введите слово УДАЛИТЬ:');
+            if ((typed || '').trim().toUpperCase() !== 'УДАЛИТЬ') { showToast('Удаление отменено', true); return; }
+            try {
+                const res = await api('/api/profile/full', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
+                localStorage.removeItem('shersh_user');
+                localStorage.removeItem(POSTS_CACHE_KEY);
+                localStorage.removeItem('shersh_post_draft');
+                const rem = res && res.removed ? res.removed : null;
+                showToast(rem ? `Удалено. Историй: ${rem.posts || 0}` : 'Все данные удалены');
+                setTimeout(() => location.reload(), 1600);
+            } catch (e) { showToast(e.message, true); }
+        });
+
         const themeSelect = document.getElementById('themeSelect');
         const body = document.body;
         // применяем сохранённую тему
@@ -1233,6 +1321,7 @@
 
         let postsPerPage = 5;      // сколько постов показывать за раз
         let visibleCount = postsPerPage;
+        let myOnly = false;        // фильтр «только мои истории»
 
         function showMorePosts() {
             visibleCount += postsPerPage;
@@ -1259,9 +1348,16 @@
             posts.slice(0, visibleCount).forEach((post, index) => {
                 // фильтр по активному тегу
                 if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
+                // фильтр «только мои истории»
+                if (myOnly && post.author !== userData.name) return;
                 shown++;
                 const postElement = document.createElement('article');
                 postElement.className = 'post-card';
+                postElement.id = 'post-' + post.id;
+                postElement.dataset.author = post.author || '';
+                postElement.dataset.tags = (post.tags || []).join(' ');
+                postElement.dataset.title = post.title || '';
+                postElement.dataset.text = post.text || '';
                 const dateStr = formatDate(post.date);
                 const commentCount = post.comments ? post.comments.length : 0;
                 
@@ -1290,8 +1386,7 @@
                     <div class="post-header-row">
                         <h2>${escapeHTML(post.title)}</h2>
                         ${controlsHTML}
-                    </div>
-                    <div class="post-meta">
+                    </div>                    <div class="post-meta">
                         ${avatarHTML}
                         <span>Автор: <a href="#" class="author-name" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>${escAuthor}</a></span>
                         <span>•</span>
@@ -1328,15 +1423,98 @@
                 moreBtn.onclick = showMorePosts;
                 postsContainer.appendChild(moreBtn);
             }
+
+            // после перерисовки ленты сохраняем активный поиск
+            const searchEl = document.getElementById('searchInput');
+            if (searchEl && searchEl.value.trim()) filterPosts(true);
         }
 
-        function filterPosts() {
-            const query = document.getElementById('searchInput').value.toLowerCase();
+        let searchTimer = null;
+        function onSearchInput() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => filterPosts(true), 250);
+        }
+
+        function normalizeForSearch(s) {
+            return String(s || '').toLowerCase().replace(/ё/g, 'е');
+        }
+
+        function filterPosts(allowHighlight) {
+            const raw = document.getElementById('searchInput').value.trim();
+            const query = normalizeForSearch(raw);
             const postCards = document.querySelectorAll('.post-card');
+            let visible = 0;
             postCards.forEach(card => {
-                const title = card.querySelector('h2').textContent.toLowerCase();
-                const text = card.querySelector('.post-content').textContent.toLowerCase();
-                if (title.includes(query) || text.includes(query)) { card.style.display = 'block'; } else { card.style.display = 'none'; }
+                const haystack = normalizeForSearch([
+                    card.dataset.title,
+                    card.dataset.text,
+                    card.dataset.author,
+                    card.dataset.tags
+                ].join(' '));
+                const match = !query || haystack.includes(query);
+                card.style.display = match ? 'block' : 'none';
+                if (match) visible++;
+                if (allowHighlight) highlightInCard(card, raw);
+            });
+            updateSearchStatus(query ? visible : null, raw);
+        }
+
+        function updateSearchStatus(count, raw) {
+            let el = document.getElementById('searchStatus');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'searchStatus';
+                el.className = 'search-status';
+                const bar = document.getElementById('searchContainer');
+                if (bar) bar.appendChild(el);
+            }
+            if (count === null) { el.textContent = ''; el.style.display = 'none'; return; }
+            el.style.display = 'block';
+            el.textContent = count > 0
+                ? `Найдено историй: ${count} по запросу «${raw}»`
+                : `По запросу «${raw}» ничего не найдено`;
+        }
+
+        // Подсветка совпадений в заголовке, тексте, авторе и тегах
+        function highlightInCard(card, raw) {
+            const q = String(raw || '').trim();
+            const targets = card.querySelectorAll('h2, .post-content, .author-name, .hint-tag');
+            targets.forEach(node => {
+                clearHighlight(node);
+                if (!q || q.length < 2) return;
+                highlightNode(node, q);
+            });
+        }
+
+        function clearHighlight(node) {
+            node.querySelectorAll('mark').forEach(m => {
+                m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+            });
+            if (node.parentNode) node.parentNode.normalize();
+        }
+
+        function highlightNode(node, q) {
+            const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+            const textNodes = [];
+            let n;
+            while ((n = walker.nextNode())) textNodes.push(n);
+            const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            textNodes.forEach(tn => {
+                const text = tn.nodeValue;
+                if (!re.test(text)) return;
+                re.lastIndex = 0;
+                const frag = document.createDocumentFragment();
+                let last = 0, m;
+                while ((m = re.exec(text)) !== null) {
+                    frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                    const mark = document.createElement('mark');
+                    mark.className = 'search-hit';
+                    mark.textContent = m[0];
+                    frag.appendChild(mark);
+                    last = m.index + m[0].length;
+                }
+                frag.appendChild(document.createTextNode(text.slice(last)));
+                tn.parentNode.replaceChild(frag, tn);
             });
         }
 
@@ -1348,6 +1526,78 @@
             } else {
                 activeTag = tag;
                 showToast('Показаны истории с тегом #' + tag);
+            }
+            renderPosts();
+        };
+
+        // Облако всех тегов
+        window.toggleAllTags = function() {
+            const cloud = document.getElementById('allTagsCloud');
+            const btn = document.getElementById('allTagsBtn');
+            if (cloud.style.display === 'block') {
+                cloud.style.display = 'none';
+                btn.textContent = '🏷 Показать все теги';
+                return;
+            }
+            const counts = {};
+            posts.forEach(p => (p.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+            const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b, 'ru'));
+            if (!sorted.length) {
+                cloud.innerHTML = '<span style="opacity:.7">Пока нет ни одного тега.</span>';
+            } else {
+                cloud.innerHTML = sorted.map(t =>
+                    `<span class="hint-tag${activeTag === t ? ' active' : ''}" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)} <small>(${counts[t]})</small></span>`
+                ).join('');
+            }
+            cloud.style.display = 'block';
+            btn.textContent = '🏷 Скрыть теги';
+        };
+
+        // Экспорт своих историй
+        window.exportMyPosts = function(format) {
+            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы экспортировать истории', true); return; }
+            const mine = posts.filter(p => p.author === userData.name);
+            if (!mine.length) { showToast('У тебя пока нет историй для экспорта', true); return; }
+
+            let content, mime, ext;
+            if (format === 'json') {
+                content = JSON.stringify(mine.map(p => ({
+                    id: p.id, title: p.title, text: p.text, date: p.date,
+                    tags: p.tags || [], likes: p.likes,
+                    comments: (p.comments || []).map(c => ({ author: c.author, text: c.text, date: c.date }))
+                })), null, 2);
+                mime = 'application/json;charset=utf-8';
+                ext = 'json';
+            } else {
+                content = mine.map(p => {
+                    const tags = (p.tags || []).length ? '\nТеги: ' + p.tags.map(t => '#' + t).join(' ') : '';
+                    return `${p.title}\n${formatDate(p.date)}${tags}\n\n${p.text}\n\n${'—'.repeat(40)}\n`;
+                }).join('\n');
+                mime = 'text/plain;charset=utf-8';
+                ext = 'txt';
+            }
+
+            const blob = new Blob([content], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const safeName = String(userData.name || 'author').replace(/[^\wа-яА-ЯёЁ-]+/g, '_');
+            a.href = url;
+            a.download = `skazki-${safeName}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showToast(`Экспортировано историй: ${mine.length}`);
+        };
+
+        // Только мои истории
+        window.toggleMyOnly = function() {
+            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы отфильтровать свои истории', true); return; }
+            myOnly = !myOnly;
+            const btn = document.getElementById('myOnlyBtn');
+            if (btn) {
+                btn.textContent = myOnly ? '📖 Показать все истории' : '📖 Только мои истории';
+                btn.style.borderColor = myOnly ? 'var(--gold-accent)' : 'var(--border-color)';
             }
             renderPosts();
         };
