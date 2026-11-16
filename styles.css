@@ -130,11 +130,17 @@
         }
         .btn:hover { background-color: var(--gold-hover); transform: scale(1.05); }
 
-        .feed-banner { max-width: 900px; margin: 0 auto 18px; padding: 0 20px; }
-        .feed-banner img {
-            display: block; width: 100%; height: clamp(120px, 20vw, 210px);
-            object-fit: cover; border-radius: 16px; box-shadow: var(--shadow);
+        .feed-banner {
+            max-width: 800px; margin: 0 auto 15px; padding: 0 20px;
+            max-height: 260px; overflow: hidden;
+            transition: max-height 0.28s ease, opacity 0.28s ease, margin-bottom 0.28s ease;
         }
+        .feed-banner img {
+            display: block; width: 100%; height: clamp(110px, 16vw, 170px);
+            object-fit: cover; border-radius: 14px; box-shadow: var(--shadow);
+        }
+        .feed-banner.is-collapsed { max-height: 0; opacity: 0; margin-bottom: 0; pointer-events: none; }
+        .feed-banner.is-off { display: none; }
         @media (max-width: 700px) {
             .feed-banner { display: none; }
         }

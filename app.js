@@ -576,9 +576,26 @@
             document.getElementById('feed-page').style.display = page === 'feed' ? 'block' : 'none';
             document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
             document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
+            const banner = document.getElementById('feedBanner');
+            if (banner) banner.classList.toggle('is-off', page !== 'feed');
             updateHeaderUI();
             if (page === 'profile') updateProfileUI();
         }
+
+        // Баннер в шапке: при прокрутке сворачиваем, чтобы шапка не занимала пол-экрана
+        (function () {
+            const banner = document.getElementById('feedBanner');
+            if (!banner) return;
+            let ticking = false;
+            window.addEventListener('scroll', () => {
+                if (ticking) return;
+                ticking = true;
+                window.requestAnimationFrame(() => {
+                    banner.classList.toggle('is-collapsed', window.scrollY > 120);
+                    ticking = false;
+                });
+            }, { passive: true });
+        })();
 
         function updateProfileUI() {
             document.getElementById('profileNameDisplay').textContent = userData.name;
