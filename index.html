@@ -231,6 +231,13 @@
         .hint-tag.active { outline: 2px solid var(--gold-accent); }
 
         .my-posts-section { margin-top: 30px; }
+        .telegram-status {
+            margin: -8px 0 20px; padding: 10px 14px; border-radius: 10px;
+            font-size: 0.9rem; line-height: 1.4; border-left: 4px solid var(--border-color);
+            background: var(--card-bg);
+        }
+        .telegram-status.ok { border-left-color: #3fa96b; }
+        .telegram-status.warn { border-left-color: var(--gold-accent); }
         .my-post-row {
             display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
             padding: 10px 12px; border-bottom: 1px solid var(--border-color);
@@ -698,6 +705,8 @@
             <button class="btn btn-delete" id="deleteAccountBtn">Удалить аккаунт</button>
             <button class="btn btn-delete" id="deleteAllDataBtn" title="Удалить профиль, все свои истории, комментарии и лайки">🧹 Удалить все мои данные</button>
         </div>
+
+        <div id="telegramStatus" class="telegram-status" style="display:none;" role="status" aria-live="polite"></div>
 
         <div class="my-posts-section">
             <h3 style="margin-bottom: 12px;">📚 Мои истории <span id="myPostsCount" style="opacity:.7;font-weight:400;"></span></h3>
@@ -1245,6 +1254,9 @@
             document.getElementById('statComments').textContent = totalComments;
 
             renderMyPosts(myPosts);
+
+            // показываем, привязан ли Telegram (для восстановления пароля)
+            if (typeof updateTelegramStatus === 'function') updateTelegramStatus();
         }
 
         function renderMyPosts(myPosts) {
@@ -1381,12 +1393,60 @@
             } catch (e) { showToast(e.message, true); }
         });
 
+        // --- Статус привязки Telegram в профиле ---
+        let tgPollTimer = null;
+
+        function stopTgPolling() {
+            if (tgPollTimer) { clearInterval(tgPollTimer); tgPollTimer = null; }
+        }
+
+        async function updateTelegramStatus() {
+            const el = document.getElementById('telegramStatus');
+            const btn = document.getElementById('bindTelegramBtn');
+            if (!el) return;
+            if (!userData.name || userData.isGuest) { el.style.display = 'none'; return; }
+            try {
+                const data = await api('/api/telegram/status?name=' + encodeURIComponent(userData.name));
+                if (data.bound) {
+                    el.textContent = '✅ Telegram привязан — код восстановления пароля придёт в него.';
+                    el.className = 'telegram-status ok';
+                    if (btn) btn.textContent = '🔁 Перепривязать Telegram';
+                    stopTgPolling();
+                } else {
+                    el.textContent = '⚠️ Telegram не привязан. Без него не работает восстановление пароля — нажми «Привязать Telegram», а в боте «Старт».';
+                    el.className = 'telegram-status warn';
+                    if (btn) btn.textContent = '📨 Привязать Telegram';
+                }
+                el.style.display = 'block';
+            } catch (e) {
+                el.style.display = 'none';
+            }
+        }
+        window.updateTelegramStatus = updateTelegramStatus;
+
+        function startTgPolling() {
+            stopTgPolling();
+            let tries = 0;
+            tgPollTimer = setInterval(async () => {
+                tries++;
+                await updateTelegramStatus();
+                const el = document.getElementById('telegramStatus');
+                if ((el && el.classList.contains('ok')) || tries >= 20) stopTgPolling();
+            }, 3000);
+        }
+
         // Привязка Telegram: открываем бота с payload bind_<имя>
         document.getElementById('bindTelegramBtn').addEventListener('click', () => {
             if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт', true); return; }
             const url = 'https://t.me/shersh_auth_bot?start=' + encodeURIComponent('bind_' + userData.name);
             window.open(url, '_blank');
             showToast('Открой бота и нажми «Старт» — привязка произойдёт автоматически');
+            startTgPolling();
+        });
+
+        // Вернулись из Telegram — сразу перечитываем статус
+        window.addEventListener('focus', () => {
+            if (userData.name && !userData.isGuest) updateTelegramStatus();
         });
 
         document.getElementById('deleteAccountBtn').addEventListener('click', () => { deleteAccountModal.style.display = 'flex'; });

@@ -348,6 +348,18 @@ def telegram_setup():
     return jsonify(result)
 
 
+# Статус привязки Telegram: только флаг, без идентификаторов
+@app.route("/api/telegram/status", methods=["GET"])
+def telegram_status():
+    name = (request.args.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "no name"}), 400
+    p = find_profile(name)
+    if not p:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    return jsonify({"bound": bool(p.get("telegram_id"))})
+
+
 # Запрос кода восстановления пароля (отправляется в Telegram)
 @app.route("/api/forgot-password", methods=["POST"])
 @rate_limit(limit=5, window=300)  # не больше 5 запросов смены с одного IP за 5 минут
