@@ -157,6 +157,18 @@
         .theme-toggle, .logout-icon { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 5px; transition: transform 0.2s; }
         .theme-toggle:hover, .logout-icon:hover { transform: scale(1.05); }
 
+        .bell-btn {
+            background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 5px;
+            transition: transform 0.2s; position: relative;
+        }
+        .bell-btn:hover { transform: scale(1.15); }
+        .bell-badge {
+            position: absolute; top: -2px; right: -2px;
+            background-color: var(--error-color); color: #fff; border-radius: 50%;
+            font-size: 0.7rem; font-weight: bold; min-width: 18px; height: 18px;
+            display: flex; align-items: center; justify-content: center; padding: 0 3px;
+        }
+
         #themeSelect {
             background-color: var(--card-bg);
             color: var(--text-color);
@@ -510,6 +522,7 @@
             <div class="header-controls">
                 <span class="user-info" id="headerProfileBtn" onclick="showPage('profile')">👋 Гость</span>
                 <button class="logout-icon" id="headerLogoutBtn" title="Выйти" style="display: none;">🚪</button>
+                <button class="bell-btn" id="bellBtn" title="Новые комментарии к вашим историям" style="position:relative; display:none;">🔔<span class="bell-badge" id="bellBadge" style="display:none;"></span></button>
                 <select id="themeSelect" class="theme-toggle" title="Выбрать тему">
                     <option value="light">🌙 Светлая</option>
                     <option value="dark">🌚 Тёмная</option>
@@ -725,6 +738,7 @@
                 }));
                 localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
+                updateBell();
             } catch (e) {
                 if (localStorage.getItem(POSTS_CACHE_KEY)) {
                     showToast('Нет связи с сервером — показана сохранённая копия ⚠️', true);
@@ -967,6 +981,17 @@
                 logoutBtn.style.display = 'block';
             } else {
                 logoutBtn.style.display = 'none';
+            }
+
+            // Колокольчик уведомлений виден только залогиненным
+            const bellBtn = document.getElementById('bellBtn');
+            const bellBadge = document.getElementById('bellBadge');
+            if (userData.name && !userData.isGuest) {
+                bellBtn.style.display = 'inline-block';
+                updateBell();
+            } else {
+                bellBtn.style.display = 'none';
+                bellBadge.style.display = 'none';
             }
             
             const searchContainer = document.getElementById('searchContainer');
@@ -1273,6 +1298,34 @@
             const url = location.origin + location.pathname + '#post-' + post.id;
             navigator.clipboard.writeText(url).then(() => showToast('Ссылка скопирована!')).catch(() => showToast('Не удалось скопировать', true));
         };
+
+        // Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
+        const NOTIF_KEY = 'shersh_notif_seen';
+        function updateBell() {
+            const bellBtn = document.getElementById('bellBtn');
+            const bellBadge = document.getElementById('bellBadge');
+            if (!bellBtn || !userData.name || userData.isGuest) return;
+            // суммарное число комментариев к постам автора
+            const myPosts = posts.filter(p => p.author === userData.name);
+            let totalComments = myPosts.reduce((s, p) => s + (p.comments ? p.comments.length : 0), 0);
+            const seen = parseInt(localStorage.getItem(NOTIF_KEY) || '0', 10);
+            const count = totalComments - seen;
+            if (count > 0) {
+                bellBadge.textContent = count > 99 ? '99+' : count;
+                bellBadge.style.display = 'flex';
+            } else {
+                bellBadge.style.display = 'none';
+            }
+        }
+
+        document.getElementById('bellBtn').addEventListener('click', () => {
+            const bellBadge = document.getElementById('bellBadge');
+            bellBadge.style.display = 'none';
+            const myPosts = posts.filter(p => p.author === userData.name);
+            const totalComments = myPosts.reduce((s, p) => s + (p.comments ? p.comments.length : 0), 0);
+            localStorage.setItem(NOTIF_KEY, String(totalComments));
+            showToast('Вы просмотрели свои уведомления');
+        });
 
         window.toggleLike = async function(index) {
             const post = posts[index];
