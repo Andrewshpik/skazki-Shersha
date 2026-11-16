@@ -795,6 +795,7 @@ def list_posts():
             "author": r["author"], "date": r["date"], "image": r.get("image"),
             "likes": len(r.get("likes") or []) if False else r.get("likes", 0),
             "views": r.get("views"),
+            "audio": r.get("audio"),
             "comments": (r.get("comments") or []),
         })
     return jsonify(result)
@@ -818,6 +819,16 @@ def _rfc822(value):
         return dt.astimezone(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
     except Exception:
         return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
+
+
+def _clean_audio_url(value):
+    """Ссылка на авторскую озвучку: None — не задана, '' — некорректна."""
+    url = (value or "").strip()
+    if not url:
+        return None
+    if len(url) > 500 or not url.startswith("https://"):
+        return ""
+    return url
 
 
 # Лента для подписки: любой RSS-читатель видит свежие истории
@@ -877,6 +888,9 @@ def create_post():
     text = (data.get("text") or "").strip()
     author = auth_user()
     image = data.get("image") or None
+    audio = _clean_audio_url(data.get("audio"))
+    if audio == "":
+        return jsonify({"error": "Некорректная ссылка на озвучку"}), 400
     if not author:
         return jsonify({"error": "Требуется вход в аккаунт"}), 401
     if _is_banned(author):
@@ -890,7 +904,7 @@ def create_post():
     if contains_profanity(title) or contains_profanity(text):
         return jsonify({"error": "Текст содержит нецензурные выражения"}), 400
     row = db_insert("posts", {"title": title, "text": text, "author": author,
-                              "image": image, "likes": 0})[0]
+                              "image": image, "audio": audio, "likes": 0})[0]
     return jsonify({"status": "ok", "post": row})
 
 
@@ -910,6 +924,11 @@ def update_post(post_id):
     if "title" in data: payload["title"] = (data.get("title") or "").strip()
     if "text" in data: payload["text"] = (data.get("text") or "").strip()
     if "image" in data: payload["image"] = data.get("image") or None
+    if "audio" in data:
+        audio_value = _clean_audio_url(data.get("audio"))
+        if audio_value == "":
+            return jsonify({"error": "Некорректная ссылка на озвучку"}), 400
+        payload["audio"] = audio_value
     if "title" in payload and len(payload["title"]) > 200:
         return jsonify({"error": "Заголовок не длиннее 200 символов"}), 400
     if "text" in payload and len(payload["text"]) > 20000:
@@ -1267,6 +1286,50 @@ def admin_update_user():
         return jsonify({"error": "Нельзя снять права с самого себя"}), 400
     db_update("profiles", {"is_admin": bool(data.get("is_admin"))}, "name", target)
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/audio", methods=["POST"])
+@rate_limit(limit=10, window=60)  # не больше 10 загрузок озвучки в минуту
+def upload_audio():
+    """Принимает base64-аудио, кладёт в Supabase Storage, возвращает публичный URL."""
+    if not auth_user():
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    data = request.json or {}
+    raw = data.get("audio") or ""
+    if not raw:
+        return jsonify({"error": "Нет данных озвучки"}), 400
+    if not raw.startswith("data:audio/"):
+        return jsonify({"error": "Допустимы только аудиофайлы"}), 400
+    try:
+        header, b64 = raw.split(",", 1)
+        audio_bytes = binascii.a2b_base64(b64)
+    except Exception:
+        return jsonify({"error": "Некорректная кодировка файла"}), 400
+    if len(audio_bytes) > 15 * 1024 * 1024:
+        return jsonify({"error": "Файл больше 15 МБ"}), 400
+
+    mime = header.split(";")[0].split(":")[1] if ":" in header.split(";")[0] else "audio/mpeg"
+    ext_map = {
+        "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a",
+        "audio/m4a": "m4a", "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-wav": "wav",
+        "audio/webm": "webm",
+    }
+    ext = ext_map.get(mime, "mp3")
+    fname = f"{uuid.uuid4().hex}.{ext}"
+    storage_headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": "Bearer " + SUPABASE_SERVICE_KEY,
+        "Content-Type": mime,
+    }
+    up = requests.post(
+        f"{SUPABASE_STORAGE}/object/images/{fname}",
+        headers=storage_headers, data=audio_bytes, timeout=60,
+    )
+    if up.status_code not in (200, 201):
+        return jsonify({"error": "Не удалось загрузить озвучку"}), 500
+
+    public_url = f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/images/{fname}"
+    return jsonify({"status": "ok", "url": public_url})
 
 
 @app.route("/api/upload", methods=["POST"])

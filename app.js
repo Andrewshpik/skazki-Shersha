@@ -146,6 +146,7 @@
                     id: r.id, title: r.title, text: r.text, author: r.author,
                     date: r.date, image: r.image, likes: r.likes || 0,
                     views: (r.views === undefined ? null : r.views),
+                    audio: r.audio || null,
                     comments: r.comments || [], isLiked: likedSet.has(r.id),
                     tags: extractTags(r.title + ' ' + r.text)
                 }));
@@ -410,6 +411,7 @@
         const deleteAccountModal = document.getElementById('deleteAccountModal');
         let editingPostId = null;
         let currentPostImageBase64 = null;
+        let currentPostAudio = null;
         let currentCommentImageBase64 = null;
 
         function checkAuth() {
@@ -1085,8 +1087,8 @@
                         <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
                             🔗 Поделиться
                         </button>
-                        <button class="action-btn" onclick="speakPost(${index})" title="Слушать сказку" aria-label="Слушать сказку">
-                            🔊 Слушать
+                        <button class="action-btn" onclick="speakPost(${index})" title="${post.audio ? 'Слушать озвучку автора' : 'Слушать сказку'}" aria-label="Слушать сказку">
+                            ${post.audio ? '🎧 Слушать запись' : '🔊 Слушать'}
                         </button>
                         ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться" aria-label="Пожаловаться на историю">🚩</button>` : ''}
                     </div>
@@ -1564,6 +1566,7 @@
             document.getElementById('postText').value = post.text;
             document.getElementById('submitPostBtn').textContent = 'Сохранить';
             currentPostImageBase64 = post.image || null;
+            setAudioStatus(post.audio || null);
             document.getElementById('postImageInput').value = ''; 
             updateWordCount(); postModal.style.display = 'flex';
         };
@@ -1590,9 +1593,58 @@
             } else { currentPostImageBase64 = null; }
         });
 
+        function setAudioStatus(url) {
+            currentPostAudio = url || null;
+            const status = document.getElementById('postAudioStatus');
+            if (!status) return;
+            if (currentPostAudio) {
+                status.style.display = 'block';
+                status.textContent = '🎧 Озвучка прикреплена — её услышат вместо синтеза';
+            } else {
+                status.style.display = 'none';
+                status.textContent = '';
+            }
+        }
+
+        const postAudioInput = document.getElementById('postAudioInput');
+        if (postAudioInput) postAudioInput.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) { setAudioStatus(null); return; }
+            if (!/^audio\//i.test(file.type)) {
+                showToast('Нужен аудиофайл: mp3, m4a, ogg или wav', true);
+                e.target.value = '';
+                return;
+            }
+            if (file.size > 15 * 1024 * 1024) {
+                showToast('Файл больше 15 МБ — сожмите озвучку', true);
+                e.target.value = '';
+                return;
+            }
+            const status = document.getElementById('postAudioStatus');
+            if (status) { status.style.display = 'block'; status.textContent = '⏳ Загружаю озвучку...'; }
+            const reader = new FileReader();
+            reader.onload = () => {
+                api('/api/audio', { method: 'POST', body: JSON.stringify({ audio: reader.result }) })
+                    .then(data => {
+                        if (!data || !data.url) throw new Error('Сервер не вернул ссылку на файл');
+                        setAudioStatus(data.url);
+                        showToast('Озвучка загружена');
+                    })
+                    .catch(err => {
+                        setAudioStatus(null);
+                        e.target.value = '';
+                        showToast(err.message, true);
+                    });
+            };
+            reader.onerror = () => { setAudioStatus(null); showToast('Не удалось прочитать файл', true); };
+            reader.readAsDataURL(file);
+        });
+
         document.getElementById('addPostBtn').addEventListener('click', () => {
             if(!userData.name || userData.isGuest) { showToast('Гости не могут писать истории!', true); return; }
             editingPostId = null; currentPostImageBase64 = null;
+            setAudioStatus(null);
+            document.getElementById('postAudioInput').value = '';
             document.getElementById('postModalTitle').textContent = 'Новая история';
             document.getElementById('postTitle').value = ''; document.getElementById('postText').value = '';
             document.getElementById('postImageInput').value = '';
@@ -1636,10 +1688,10 @@
             try {
                 await withLoading(btn, async () => {
                     if (editingPostId) {
-                        await api('/api/posts/' + editingPostId, { method: 'PATCH', body: JSON.stringify({ title, text, image: currentPostImageBase64 }) });
+                        await api('/api/posts/' + editingPostId, { method: 'PATCH', body: JSON.stringify({ title, text, image: currentPostImageBase64, audio: currentPostAudio }) });
                         showToast('История обновлена!');
                     } else {
-                        await api('/api/posts', { method: 'POST', body: JSON.stringify({ title, text, author: userData.name, image: currentPostImageBase64 }) });
+                        await api('/api/posts', { method: 'POST', body: JSON.stringify({ title, text, author: userData.name, image: currentPostImageBase64, audio: currentPostAudio }) });
                         showToast('История опубликована!');
                     }
                 });

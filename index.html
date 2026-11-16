@@ -22,7 +22,7 @@
     <meta name="twitter:image" content="https://andrewshpik.github.io/skazki-Shersha/banner.jpg">
     <meta name="theme-color" content="#FFD700">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css?v=11">
+    <link rel="stylesheet" href="styles.css?v=12">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -312,6 +312,10 @@
             <label style="display: block; margin-bottom: 5px; font-size: 0.9rem;">Прикрепить картинку (необязательно):</label>
             <input type="file" id="postImageInput" accept="image/*" style="padding: 10px; border: 1px solid var(--border-color); background: var(--input-bg);">
 
+            <label style="display: block; margin: 12px 0 5px; font-size: 0.9rem;">Озвучка автора — mp3/m4a/ogg до 15 МБ (необязательно):</label>
+            <input type="file" id="postAudioInput" accept="audio/*" style="padding: 10px; border: 1px solid var(--border-color); background: var(--input-bg);">
+            <div id="postAudioStatus" class="audio-status" style="display:none;"></div>
+
             <div class="modal-buttons">
                 <button class="btn btn-cancel" id="cancelBtn">Отмена</button>
                 <button class="btn" id="submitPostBtn">Опубликовать!</button>
@@ -379,9 +383,9 @@
     </div>
 
     <script src="tale.js?v=4"></script>
-    <script src="player.js?v=5"></script>
+    <script src="player.js?v=6"></script>
 
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
 
     <!-- Кнопка «Наверх» -->
     <button id="backToTop" title="Наверх" aria-label="Наверх" style="display:none; position:fixed; bottom:20px; left:20px; z-index:1500; width:46px; height:46px; border-radius:50%; border:none; background:var(--gold-accent); color:#333; font-size:1.4rem; cursor:pointer; box-shadow:var(--shadow); transition:transform 0.2s;">↑</button>

@@ -16,6 +16,8 @@
     let rate = 0.95;
     let state = 'idle';
     let sleepDeadline = 0;
+    let mode = 'tts';
+    let audioEl = null;
     let runId = 0;
     let voice = null;
     let bar = null;
@@ -184,6 +186,10 @@
         bar.querySelector('#audioClose').addEventListener('click', () => { stop(); hide(); });
         bar.querySelector('#audioRate').addEventListener('change', (e) => {
             rate = parseFloat(e.target.value) || 1;
+            if (mode === 'file') {
+                if (audioEl) audioEl.playbackRate = rate;
+                return;
+            }
             if (state === 'playing') {
                 const resumeAt = idx;
                 synth.cancel();
@@ -225,6 +231,7 @@
         const pos = bar.querySelector('#audioPos');
         play.textContent = state === 'paused' ? '▶' : '⏸';
         play.setAttribute('aria-label', state === 'paused' ? 'Продолжить' : 'Пауза');
+        if (mode === 'file') return;
         if (!queue.length) { pos.textContent = ''; return; }
         if (idx >= queue.length) {
             pos.textContent = 'Готово';
@@ -294,7 +301,82 @@
         next();
     }
 
+    function fmtTime(sec) {
+        if (!Number.isFinite(sec)) return '0:00';
+        const total = Math.max(0, Math.floor(sec));
+        const minutes = Math.floor(total / 60);
+        const seconds = total % 60;
+        return minutes + ':' + (seconds < 10 ? '0' + seconds : seconds);
+    }
+
+    function ensureAudioEl() {
+        if (audioEl) return audioEl;
+        audioEl = new Audio();
+        audioEl.preload = 'metadata';
+        audioEl.addEventListener('timeupdate', () => {
+            if (mode !== 'file') return;
+            if (sleepDeadline && Date.now() > sleepDeadline) {
+                sleepDeadline = 0;
+                audioEl.pause();
+                state = 'idle';
+                updateBar();
+                if (typeof showToast === 'function') showToast('Таймер сна сработал — запись остановлена');
+                return;
+            }
+            const pos = bar ? bar.querySelector('#audioPos') : null;
+            if (pos) pos.textContent = fmtTime(audioEl.currentTime) + ' / ' + fmtTime(audioEl.duration);
+            if (key) savePosition(key, Math.floor(audioEl.currentTime));
+        });
+        audioEl.addEventListener('ended', () => {
+            state = 'idle';
+            savePosition(key, 0);
+            updateBar();
+        });
+        return audioEl;
+    }
+
+    // Запись автора: играем файл, синтез для этой истории не нужен
+    function playFile(url, fileTitle, fileKey) {
+        runId += 1;
+        synth.cancel();
+        mode = 'file';
+        key = fileKey || 'file';
+        queue = [];
+        showBar(fileTitle || 'Запись автора');
+        ensureAudioEl();
+        audioEl.src = url;
+        audioEl.playbackRate = rate;
+        const saved = savedPosition(key);
+        audioEl.addEventListener('loadedmetadata', () => {
+            const pos = bar ? bar.querySelector('#audioPos') : null;
+            if (pos) pos.textContent = fmtTime(0) + ' / ' + fmtTime(audioEl.duration);
+            if (saved > 0 && Number.isFinite(audioEl.duration) && saved < audioEl.duration - 1) {
+                audioEl.currentTime = saved;
+            }
+        }, { once: true });
+        audioEl.play().then(() => {
+            state = 'playing';
+            updateBar();
+        }).catch((e) => {
+            state = 'idle';
+            updateBar();
+            if (typeof showToast === 'function') showToast('Не удалось включить запись: ' + (e && e.message ? e.message : 'ошибка'), true);
+        });
+    }
+
     function toggle() {
+        if (mode === 'file') {
+            if (!audioEl) return;
+            if (state === 'playing') {
+                audioEl.pause();
+                state = 'paused';
+            } else {
+                audioEl.play().then(() => { state = 'playing'; updateBar(); }).catch(() => {});
+                state = 'playing';
+            }
+            updateBar();
+            return;
+        }
         if (!supported) return;
         if (state === 'playing') {
             synth.pause();
@@ -310,6 +392,16 @@
     }
 
     function stop() {
+        if (mode === 'file') {
+            if (audioEl) {
+                audioEl.pause();
+                audioEl.currentTime = 0;
+            }
+            state = 'idle';
+            savePosition(key, 0);
+            updateBar();
+            return;
+        }
         if (!supported) return;
         runId += 1;
         synth.cancel();
@@ -323,6 +415,8 @@
             if (typeof showToast === 'function') showToast('Браузер не умеет озвучивать текст — попробуй Chrome или Safari', true);
             return;
         }
+        if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+        mode = 'tts';
         stop();
         key = postKey;
         queue = chunkText(text);
@@ -337,11 +431,15 @@
         speakFrom(idx);
     }
 
-    window.speechPlayer = { speak, stop, hide, get supported() { return supported; } };
+    window.speechPlayer = { speak, stop, hide, playFile, get supported() { return supported; } };
 
     window.speakPost = function (index) {
         const post = (typeof posts !== 'undefined' && posts) ? posts[index] : null;
         if (!post) return;
+        if (post.audio) {
+            playFile(post.audio, post.title || 'Запись автора', 'post-audio-' + post.id);
+            return;
+        }
         speak('post-' + post.id, post.title || 'История', post.text || '');
     };
 

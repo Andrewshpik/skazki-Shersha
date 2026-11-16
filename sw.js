@@ -1,14 +1,14 @@
 // Service Worker для «Сказок Шерша»
 // Кэширует статические файлы (оболочку сайта) для быстрой загрузки и офлайн-режима.
-const CACHE = 'shersha-cache-v22';
+const CACHE = 'shersha-cache-v23';
 const ASSETS = [
   './',
   './index.html',
   './shersh_cursor.png',
-  './styles.css?v=11',
-  './app.js?v=14',
+  './styles.css?v=12',
+  './app.js?v=15',
   './tale.js?v=4',
-  './player.js?v=5',
+  './player.js?v=6',
   './admin.css',
   './admin.js?v=1',
   './manifest.json'
