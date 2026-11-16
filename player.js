@@ -63,6 +63,9 @@
         return russian.length ? russian : all;
     }
 
+    const FEMALE_VOICE = /svetlana|светлана|milena|милена|alena|алёна|alena|irina|ирина|katya|катя|elena|елена|female|женск/i;
+    const MALE_VOICE = /pavel|павел|dmitry|дмитрий|artem|артём|yuri|юрий|male|мужск/i;
+
     function preferredVoice() {
         const list = voiceList();
         if (!list.length) return null;
@@ -72,8 +75,9 @@
             const found = list.find(v => v.name === saved);
             if (found) return found;
         }
-        // «Человеческие» голоса Windows и прочие женские — обычно звучат живее
-        return list.find(v => /svetlana|светлана|dmitry|дмитрий|milena|alena|irina|katya|female|женск/i.test(v.name || ''))
+        // Для сказок женский голос звучит мягче; мужской — только если выбора нет
+        return list.find(v => FEMALE_VOICE.test(v.name || ''))
+            || list.find(v => !MALE_VOICE.test(v.name || ''))
             || list[0];
     }
 
