@@ -99,6 +99,7 @@
         header h1 { font-size: 1.25rem; }
 
         .spacer { flex: 1; }
+        .me { font-size: 0.88rem; opacity: 0.8; background: var(--comment-bg); border: 1px solid var(--border-color); padding: 5px 10px; border-radius: 999px; }
 
         .btn {
             background-color: var(--gold-accent);
@@ -210,6 +211,7 @@
 <body>
     <header>
         <h1>🛡️ Админка «Сказки Шерша»</h1>
+        <span class="me" id="meLabel" title="Аккаунт, от имени которого выполняются действия"></span>
         <span class="spacer"></span>
         <select id="themeSelect" class="btn btn-ghost" title="Тема">
             <option value="light">🌙 Светлая</option>
@@ -639,6 +641,7 @@
             const admin = document.getElementById('admin');
             admin.style.display = 'block';
             document.getElementById('gate').style.display = 'none';
+            document.getElementById('meLabel').textContent = '👤 ' + state.me.name;
             await loadData();
         })();
     </script>

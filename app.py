@@ -943,6 +943,14 @@ def add_ban():
     profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
     if not (profiles and profiles[0].get("is_admin") and target):
         return jsonify({"error": "Нет прав или нет цели"}), 403
+    if target == user:
+        return jsonify({"error": "Нельзя забанить самого себя"}), 400
+    try:
+        existing = db_select("banned", params={"select": "name", "name": f"eq.{target}"})
+    except Exception:
+        existing = []
+    if existing:
+        return jsonify({"status": "ok", "already": True})
     db_insert("banned", {"name": target, "reason": (data.get("reason") or "")[:300]})
     return jsonify({"status": "ok"})
 
