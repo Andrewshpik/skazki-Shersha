@@ -586,8 +586,12 @@
         (function () {
             const banner = document.getElementById('feedBanner');
             if (!banner) return;
-            const sync = () => banner.classList.toggle('is-collapsed', window.scrollY > 120);
+            const offset = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            const sync = () => banner.classList.toggle('is-collapsed', offset() > 120);
+            // скроллиться может и документ, и внутренний контейнер — ловим событие на фазе перехвата
+            document.addEventListener('scroll', sync, { passive: true, capture: true });
             window.addEventListener('scroll', sync, { passive: true });
+            window.addEventListener('resize', sync, { passive: true });
             sync();
         })();
 
