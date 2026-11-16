@@ -558,6 +558,9 @@
     </header>
 
     <main id="feed-page">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <button class="btn" onclick="randomTale()" style="background-color: var(--card-bg); border: 2px solid var(--gold-accent);">🌙 Случайная сказка на ночь</button>
+        </div>
         <div id="posts-container"></div>
     </main>
 
@@ -1619,6 +1622,13 @@ const deleteBtn = own
         // Открытие модалок "О проекте" и "Правила"
         window.showAbout = function() { document.getElementById('aboutModal').style.display = 'flex'; };
         window.showRules = function() { document.getElementById('rulesModal').style.display = 'flex'; };
+
+        // Случайная сказка на ночь: открыть случайный пост
+        window.randomTale = function() {
+            if (!posts.length) { showToast('Пока нет историй — стань первым!', true); return; }
+            const idx = Math.floor(Math.random() * posts.length);
+            window.openComments(idx);
+        };
 
         // Поддержка проекта (без платежей — контакт создателя / копия ссылки на репозиторий)
         window.supportProject = function() {
