@@ -154,6 +154,24 @@
         }
         .btn:hover { background-color: var(--gold-hover); transform: scale(1.05); }
 
+        .feed-tools {
+            display: flex; flex-wrap: wrap; gap: 10px;
+            justify-content: center; margin-bottom: 20px;
+        }
+        .btn.btn-soft {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            border: 2px solid var(--border-color);
+            font-weight: 600;
+        }
+        .btn.btn-soft:hover {
+            background-color: var(--comment-bg);
+            border-color: var(--gold-accent);
+        }
+        @media (max-width: 600px) {
+            .feed-tools .btn { width: auto; font-size: 0.9rem; padding: 9px 14px; }
+        }
+
         .theme-toggle, .logout-icon { background: none; border: none; font-size: 1.5rem; cursor: pointer; padding: 5px; transition: transform 0.2s; }
         .theme-toggle:hover, .logout-icon:hover { transform: scale(1.05); }
 
@@ -627,10 +645,10 @@
     </header>
 
     <main id="feed-page">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <button class="btn" onclick="randomTale()" style="background-color: var(--card-bg); border: 2px solid var(--gold-accent);">🌙 Случайная сказка на ночь</button>
-            <button class="btn" id="allTagsBtn" onclick="toggleAllTags()" style="background-color: var(--card-bg); border: 2px solid var(--border-color);">🏷 Показать все теги</button>
-            <button class="btn" id="myOnlyBtn" onclick="toggleMyOnly()" style="background-color: var(--card-bg); border: 2px solid var(--border-color);">📖 Только мои истории</button>
+        <div class="feed-tools">
+            <button class="btn btn-soft" onclick="randomTale()">🌙 Случайная сказка на ночь</button>
+            <button class="btn btn-soft" id="allTagsBtn" onclick="toggleAllTags()">🏷 Показать все теги</button>
+            <button class="btn btn-soft" id="myOnlyBtn" onclick="toggleMyOnly()">📖 Только мои истории</button>
         </div>
         <div id="allTagsCloud" class="all-tags-cloud" style="display:none;"></div>
         <div id="posts-container"></div>
