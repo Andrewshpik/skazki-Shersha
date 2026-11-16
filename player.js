@@ -13,8 +13,9 @@
     let queue = [];
     let idx = 0;
     let key = null;
-    let rate = 1;
+    let rate = 0.95;
     let state = 'idle';
+    let sleepDeadline = 0;
     let runId = 0;
     let voice = null;
     let bar = null;
@@ -38,22 +39,32 @@
     // Режем текст на фразы: цель — короткие куски, чтобы пауза и «продолжить»
     // работали точно, а браузер не обрывал длинную реплику.
     function chunkText(text) {
-        const clean = String(text || '').replace(/\s+/g, ' ').trim();
-        if (!clean) return [];
-        const sentences = clean.split(/(?<=[.!?…;:])\s+/);
+        const raw = String(text || '').replace(/\r/g, '');
+        if (!raw.trim()) return [];
+        const paragraphs = raw.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
         const out = [];
-        sentences.forEach(sentence => {
-            let rest = sentence.trim();
-            while (rest.length > MAX_CHUNK) {
-                let cut = rest.lastIndexOf(' ', MAX_CHUNK);
-                if (cut < MIN_CHUNK) cut = rest.indexOf(' ', MAX_CHUNK);
-                if (cut <= 0) cut = MAX_CHUNK;
-                out.push(rest.slice(0, cut).trim());
-                rest = rest.slice(cut).trim();
-            }
-            if (rest) out.push(rest);
+        paragraphs.forEach((paragraph, paragraphIndex) => {
+            const clean = paragraph.replace(/\s+/g, ' ');
+            const chunks = [];
+            clean.split(/(?<=[.!?…;:])\s+/).forEach(sentence => {
+                let rest = sentence.trim();
+                while (rest.length > MAX_CHUNK) {
+                    let cut = rest.lastIndexOf(' ', MAX_CHUNK);
+                    if (cut < MIN_CHUNK) cut = rest.indexOf(' ', MAX_CHUNK);
+                    if (cut <= 0) cut = MAX_CHUNK;
+                    chunks.push(rest.slice(0, cut).trim());
+                    rest = rest.slice(cut).trim();
+                }
+                if (rest) chunks.push(rest);
+            });
+            chunks.forEach((chunk, chunkIndex) => {
+                const isLastInParagraph = chunkIndex === chunks.length - 1;
+                const isLastParagraph = paragraphIndex === paragraphs.length - 1;
+                // На границе абзаца — пауза, как при чтении вслух
+                out.push({ text: chunk, gap: isLastInParagraph && !isLastParagraph ? 600 : 0 });
+            });
         });
-        return out.filter(Boolean);
+        return out;
     }
 
     function voiceList() {
@@ -140,6 +151,7 @@
         bar.setAttribute('aria-label', 'Плеер сказки');
         bar.innerHTML = `
             <div class="audio-bar__title" id="audioTitle"></div>
+            <div class="audio-bar__now" id="audioNow" aria-live="polite"></div>
             <div class="audio-bar__row">
                 <button type="button" class="audio-btn" id="audioPlay" aria-label="Пауза">⏸</button>
                 <button type="button" class="audio-btn" id="audioStop" aria-label="Остановить">⏹</button>
@@ -150,9 +162,17 @@
                 <label class="audio-bar__rate">Скорость
                     <select id="audioRate" aria-label="Скорость чтения">
                         <option value="0.8">0.8×</option>
-                        <option value="1" selected>1×</option>
-                        <option value="1.2">1.2×</option>
-                        <option value="1.5">1.5×</option>
+                        <option value="0.95" selected>0.95×</option>
+                        <option value="1.15">1.15×</option>
+                        <option value="1.4">1.4×</option>
+                    </select>
+                </label>
+                <label class="audio-bar__rate">Сон
+                    <select id="audioSleep" aria-label="Таймер сна">
+                        <option value="0" selected>выкл</option>
+                        <option value="15">15 мин</option>
+                        <option value="30">30 мин</option>
+                        <option value="60">60 мин</option>
                     </select>
                 </label>
                 <button type="button" class="audio-btn" id="audioClose" aria-label="Закрыть плеер">✕</button>
@@ -177,6 +197,13 @@
                 const resumeAt = idx;
                 synth.cancel();
                 speakFrom(resumeAt);
+            }
+        });
+        bar.querySelector('#audioSleep').addEventListener('change', (e) => {
+            const minutes = parseFloat(e.target.value) || 0;
+            sleepDeadline = minutes > 0 ? Date.now() + minutes * 60000 : 0;
+            if (typeof showToast === 'function') {
+                showToast(minutes > 0 ? 'Таймер сна: ' + minutes + ' мин' : 'Таймер сна выключен');
             }
         });
         return bar;
@@ -207,6 +234,14 @@
         }
     }
 
+    function showCurrentLine(text) {
+        if (!bar) return;
+        const now = bar.querySelector('#audioNow');
+        if (!now) return;
+        const clean = String(text || '').trim();
+        now.textContent = clean.length > 120 ? clean.slice(0, 120) + '…' : clean;
+    }
+
     function speakFrom(start) {
         if (!supported) return;
         const myRun = ++runId;
@@ -216,22 +251,37 @@
 
         const next = () => {
             if (myRun !== runId) return;
+            if (sleepDeadline && Date.now() > sleepDeadline) {
+                sleepDeadline = 0;
+                state = 'idle';
+                updateBar();
+                if (typeof showToast === 'function') showToast('Таймер сна сработал — чтение остановлено');
+                return;
+            }
             if (idx >= queue.length) {
                 state = 'idle';
                 savePosition(key, 0);
                 updateBar();
                 return;
             }
-            const utterance = new SpeechSynthesisUtterance(queue[idx]);
+            const item = queue[idx];
+            showCurrentLine(item.text);
+            const utterance = new SpeechSynthesisUtterance(item.text);
             utterance.lang = 'ru-RU';
             utterance.rate = rate;
             if (voice) utterance.voice = voice;
             utterance.onend = () => {
                 if (myRun !== runId) return;
+                const gap = item.gap || 0;
                 idx += 1;
                 savePosition(key, idx);
                 updateBar();
-                next();
+                if (gap > 0) {
+                    // пауза на границе абзаца
+                    window.setTimeout(() => { if (myRun === runId) next(); }, gap);
+                } else {
+                    next();
+                }
             };
             utterance.onerror = (e) => {
                 if (myRun !== runId) return;
