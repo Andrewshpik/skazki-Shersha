@@ -20,6 +20,7 @@
     <meta name="twitter:description" content="Уютное сообщество, где можно публиковать свои сказки, истории из жизни и театральные закулисья.">
     <meta name="twitter:image" content="https://andrewshpik.github.io/skazki-Shersha/banner.jpg">
     <meta name="theme-color" content="#FFD700">
+    <link rel="manifest" href="manifest.json">
     <style>
         :root {
             --bg-color: #f4f6f8;
@@ -555,6 +556,7 @@
                 <div class="stats">
                     <span>📝 Историй: <b id="statPosts">0</b></span>
                     <span>👍 Лайков: <b id="statLikes">0</b></span>
+                    <span>💬 Комментариев: <b id="statComments">0</b></span>
                 </div>
             </div>
         </div>
@@ -997,8 +999,10 @@
 
             let myPosts = posts.filter(p => p.author === userData.name);
             let totalLikes = myPosts.reduce((sum, p) => sum + p.likes, 0);
+            let totalComments = myPosts.reduce((sum, p) => sum + (p.comments ? p.comments.length : 0), 0);
             document.getElementById('statPosts').textContent = myPosts.length;
             document.getElementById('statLikes').textContent = totalLikes;
+            document.getElementById('statComments').textContent = totalComments;
         }
 
         window.openAuthorProfile = function(authorName) {
@@ -1176,7 +1180,7 @@
                     </div>
                 `;
 
-                const imageHTML = post.image ? `<img src="${post.image}" class="post-image" onclick="openImageModal('${post.image}')">` : '';
+                const imageHTML = post.image ? `<img src="${post.image}" class="post-image" loading="lazy" onclick="openImageModal('${post.image}')">` : '';
                 const tagsHTML = (post.tags && post.tags.length)
                     ? `<div class="post-tags">${post.tags.map(t => `<span class="hint-tag" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)}</span>`).join('')}</div>`
                     : '';
@@ -1388,7 +1392,7 @@
                     const div = document.createElement('div');
                     div.className = 'comment-item';
                     
-                    const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" onclick="openImageModal('${c.image}')">` : '';
+                    const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
                     const own = userData.name && c.author === userData.name && !userData.isGuest;
                     const editBtn = own
                         ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий">✏️</button>`
@@ -1470,6 +1474,10 @@
         }
 
         // --- ИНИЦИАЛИЗАЦИЯ ---
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+
         async function init() {
             await loadProfiles();
             await loadPosts();
