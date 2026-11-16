@@ -3,6 +3,7 @@ import hashlib
 import time
 import binascii
 import uuid
+import secrets
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -115,6 +116,8 @@ def contains_profanity(text):
 
 # --- Хранение сессий Telegram (код -> пользователь) ---
 sessions = {}
+# Коды восстановления пароля: code -> {"name": ..., "expires": ts}
+reset_codes = {}
 
 
 @app.route("/", methods=["GET"])
@@ -151,6 +154,61 @@ def check_auth():
         user_data = sessions.pop(code)
         return jsonify({"status": "ok", "user": user_data})
     return jsonify({"status": "waiting"}), 200
+
+
+# Привязка telegram_id к профилю (вход точно по именам)
+@app.route("/api/telegram-bind", methods=["POST"])
+def telegram_bind():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    telegram_id = str((data.get("telegram_id") or "")).strip()
+    if not name or not telegram_id:
+        return jsonify({"error": "Нет данных"}), 400
+    db_update("profiles", {"telegram_id": telegram_id}, "name", name)
+    return jsonify({"status": "ok"})
+
+
+# Запрос кода восстановления пароля (отправляется в Telegram)
+@app.route("/api/forgot-password", methods=["POST"])
+@rate_limit(limit=5, window=300)  # не больше 5 запросов смены с одного IP за 5 минут
+def forgot_password():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    if not BOT_TOKEN:
+        return jsonify({"error": "Восстановление через Telegram недоступно"}), 400
+    profiles = db_select("profiles", params={"select": "telegram_id", "name": f"eq.{name}"})
+    if not profiles:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    profile = profiles[0]
+    tid = profile.get("telegram_id")
+    if not tid:
+        return jsonify({"error": "К этому профилю не привязан Telegram"}), 400
+
+    code = str(secrets.randbelow(1000000)).zfill(6)
+    reset_codes[code] = {"name": name, "expires": time.time() + 600}  # действует 10 минут
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={
+        "chat_id": tid,
+        "text": f"🔑 Код восстановления пароля на сайте «Сказки Шерша»: {code}\nВведите его на сайте. Код действителен 10 минут.",
+    })
+    return jsonify({"status": "ok"})
+
+
+# Подтверждение кода и установка нового пароля
+@app.route("/api/reset-password", methods=["POST"])
+@rate_limit(limit=10, window=300)
+def reset_password():
+    data = request.json or {}
+    code = (data.get("code") or "").strip()
+    new_password = data.get("new_password") or ""
+    if len(new_password) < 4 or len(new_password) > 64:
+        return jsonify({"error": "Пароль от 4 до 64 символов"}), 400
+    entry = reset_codes.get(code)
+    if not entry or time.time() > entry["expires"]:
+        return jsonify({"error": "Неверный или истёкший код"}), 400
+    name = entry["name"]
+    del reset_codes[code]
+    db_update("profiles", {"password_hash": hash_password(new_password)}, "name", name)
+    return jsonify({"status": "ok"})
 
 
 # --- Регистрация ---
