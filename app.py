@@ -10,7 +10,7 @@ import secrets
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -797,6 +797,75 @@ def list_posts():
             "comments": (r.get("comments") or []),
         })
     return jsonify(result)
+
+
+SITE_URL = "https://andrewshpik.github.io/skazki-Shersha/"
+
+
+def _xml_text(value):
+    return (str(value if value is not None else "")
+            .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+def _rfc822(value):
+    try:
+        raw = (value or "").replace("Z", "+00:00")
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
+    except Exception:
+        return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S %z")
+
+
+# Лента для подписки: любой RSS-читатель видит свежие истории
+@app.route("/rss.xml", methods=["GET"])
+@app.route("/feed.xml", methods=["GET"])
+def rss_feed():
+    try:
+        rows = db_select("posts", params={"select": "id,title,text,author,date",
+                                          "order": "date.desc", "limit": "30"})
+    except Exception:
+        rows = []
+
+    items = []
+    for r in rows:
+        summary = (r.get("text") or "").strip().replace("\r", " ")
+        if len(summary) > 500:
+            summary = summary[:500].rstrip() + "…"
+        items.append(
+            "    <item>\n"
+            "      <title>%s</title>\n"
+            "      <link>%s</link>\n"
+            "      <guid isPermaLink=\"false\">shersh-post-%s</guid>\n"
+            "      <pubDate>%s</pubDate>\n"
+            "      <dc:creator xmlns:dc=\"http://purl.org/dc/elements/1.1/\">%s</dc:creator>\n"
+            "      <description>%s</description>\n"
+            "    </item>"
+            % (_xml_text(r.get("title")), _xml_text(SITE_URL + "#post-" + str(r.get("id"))),
+               r.get("id"), _rfc822(r.get("date")), _xml_text(r.get("author")), _xml_text(summary))
+        )
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n'
+        "  <channel>\n"
+        "    <title>Сказки Шерша</title>\n"
+        "    <link>%s</link>\n"
+        "    <description>Сказки, истории и закулисье</description>\n"
+        "    <language>ru</language>\n"
+        "    <lastBuildDate>%s</lastBuildDate>\n"
+        "    <atom:link href=\"https://shersh-auth.de1.netrun.io/rss.xml\" rel=\"self\" type=\"application/rss+xml\"/>\n"
+        "%s\n"
+        "  </channel>\n"
+        "</rss>\n"
+        % (_xml_text(SITE_URL), _rfc822(datetime.now(timezone.utc).isoformat()),
+           "\n".join(items))
+    )
+    resp = Response(body, mimetype="application/rss+xml")
+    resp.headers["Cache-Control"] = "public, max-age=600"
+    return resp
 
 
 @app.route("/api/posts", methods=["POST"])
