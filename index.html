@@ -1499,10 +1499,11 @@
                 return;
             }
 
-            if (visibleCount > posts.length) visibleCount = posts.length;
+            // не мутируем visibleCount: иначе лента «застревает» на старом числе записей
+            const limit = Math.min(visibleCount, posts.length);
 
             let shown = 0;
-            posts.slice(0, visibleCount).forEach((post, index) => {
+            posts.slice(0, limit).forEach((post, index) => {
                 // фильтр по активному тегу
                 if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
                 // фильтр «только мои истории»
@@ -2267,11 +2268,15 @@
         );
 
         // --- Кнопка «Наверх» ---
-        const backToTopBtn = document.getElementById('backToTop');
+        // Кнопка «Наверх» лежит ниже скрипта — ищем её лениво, чтобы не падать на null
         window.addEventListener('scroll', () => {
-            backToTopBtn.style.display = window.scrollY > 400 ? 'block' : 'none';
+            const b = document.getElementById('backToTop');
+            if (b) b.style.display = window.scrollY > 400 ? 'block' : 'none';
         });
-        backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        document.addEventListener('DOMContentLoaded', () => {
+            const b = document.getElementById('backToTop');
+            if (b) b.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+        });
     </script>
 
     <!-- Кнопка «Наверх» -->
