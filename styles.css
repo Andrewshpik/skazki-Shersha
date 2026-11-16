@@ -514,6 +514,25 @@
             .modal-buttons .btn { width: 100%; }
         }
 
+        /* Уведомления */
+        .notif-list {
+            max-height: 55vh; overflow-y: auto; margin-bottom: 14px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .notif-item {
+            display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left;
+            padding: 10px 12px; border-radius: 12px; cursor: pointer; font: inherit;
+            background: var(--comment-bg); color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+        .notif-item:hover { border-color: var(--gold-accent); }
+        .notif-item.is-unread { background: var(--card-bg); border-left: 3px solid var(--gold-accent); }
+        .notif-icon { font-size: 1.1rem; line-height: 1.3; }
+        .notif-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .notif-kind { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; }
+        .notif-text { font-size: 0.9rem; }
+        .notif-post { font-size: 0.8rem; opacity: 0.7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
         /* Плашка активного тега */
         .tag-banner {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;

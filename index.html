@@ -22,7 +22,7 @@
     <meta name="twitter:image" content="https://andrewshpik.github.io/skazki-Shersha/banner.jpg">
     <meta name="theme-color" content="#FFD700">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css?v=9">
+    <link rel="stylesheet" href="styles.css?v=10">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -348,6 +348,16 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="notifModal">
+        <div class="modal-content">
+            <h2 style="text-align: center;">🔔 Уведомления</h2>
+            <div class="notif-list" id="notifList"></div>
+            <div class="modal-buttons" style="justify-content: center;">
+                <button class="btn btn-cancel" id="closeNotifBtn">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="taleModal">
         <div class="modal-content">
             <h2 style="text-align: center;">🌙 Сказка на ночь</h2>
@@ -371,7 +381,7 @@
     <script src="tale.js?v=4"></script>
     <script src="player.js?v=1"></script>
 
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
 
     <!-- Кнопка «Наверх» -->
     <button id="backToTop" title="Наверх" aria-label="Наверх" style="display:none; position:fixed; bottom:20px; left:20px; z-index:1500; width:46px; height:46px; border-radius:50%; border:none; background:var(--gold-accent); color:#333; font-size:1.4rem; cursor:pointer; box-shadow:var(--shadow); transition:transform 0.2s;">↑</button>
