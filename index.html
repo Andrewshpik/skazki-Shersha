@@ -1449,12 +1449,24 @@
         }
 
         // Привязка Telegram: открываем бота с payload bind_<имя>
-        document.getElementById('bindTelegramBtn').addEventListener('click', () => {
+        document.getElementById('bindTelegramBtn').addEventListener('click', async () => {
             if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт', true); return; }
-            const url = 'https://t.me/shersh_auth_bot?start=' + encodeURIComponent('bind_' + userData.name);
-            window.open(url, '_blank');
-            showToast('Открой бота и нажми «Старт» — привязка произойдёт автоматически');
-            startTgPolling();
+
+            // окно открываем сразу, пока есть пользовательский жест (иначе блокировщик всплывающих)
+            const win = window.open('', '_blank');
+            try {
+                const data = await api('/api/telegram/bind-code', {
+                    method: 'POST', body: JSON.stringify({ name: userData.name })
+                });
+                const url = 'https://t.me/shersh_auth_bot?start=b_' + encodeURIComponent(data.code);
+                if (win) win.location = url; else window.open(url, '_blank');
+                showToast('Открой бота и нажми «Старт» — привязка произойдёт автоматически');
+                startTgPolling();
+            } catch (e) {
+                if (win) win.close();
+                if (handleStaleProfile(e.message)) return;
+                showToast(e.message, true);
+            }
         });
 
         // Вернулись из Telegram — сразу перечитываем статус

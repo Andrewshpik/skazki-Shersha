@@ -226,6 +226,34 @@ def webhook():
                      "• Привязка для восстановления пароля: откройте профиль на сайте и нажмите «Привязать Telegram».")
             return "ok", 200
 
+        # привязка по короткому ASCII-коду (кириллица в start-параметре Telegram не доходит)
+        if payload.startswith("b_"):
+            code = payload[2:].strip()
+            try:
+                _db_cleanup("bind_codes")
+                rows = db_select("bind_codes", params={"select": "name,expires", "code": f"eq.{code}"})
+            except Exception:
+                rows = []
+            if not rows:
+                _tg_send(frm["id"], "Ссылка устарела. Нажмите на сайте «Привязать Telegram» ещё раз.")
+                return "ok", 200
+            row = rows[0]
+            if _is_expired(row.get("expires")):
+                try:
+                    db_delete("bind_codes", "code", code)
+                except Exception:
+                    pass
+                _tg_send(frm["id"], "Код привязки истёк. Нажмите на сайте «Привязать Telegram» ещё раз.")
+                return "ok", 200
+            name = row.get("name")
+            try:
+                db_update("profiles", {"telegram_id": str(frm["id"])}, "name", name)
+                db_delete("bind_codes", "code", code)
+                _tg_send(frm["id"], f"✅ Telegram привязан к профилю «{name}». Сюда придёт код восстановления пароля.")
+            except Exception:
+                _tg_send(frm["id"], "Не удалось привязать Telegram. Попробуйте позже.")
+            return "ok", 200
+
         if payload.startswith("bind_"):
             name = payload[len("bind_"):].strip()
             try:
@@ -358,6 +386,26 @@ def telegram_status():
     if not p:
         return jsonify({"error": "Пользователь не найден"}), 404
     return jsonify({"bound": bool(p.get("telegram_id"))})
+
+
+# Одноразовый ASCII-код привязки: его подставляет кнопка «Привязать Telegram»
+@app.route("/api/telegram/bind-code", methods=["POST"])
+@rate_limit(limit=10, window=300)
+def telegram_bind_code():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    p = find_profile(name)
+    if not p:
+        return jsonify({"error": "Пользователь не найден"}), 404
+
+    code = secrets.token_hex(4)
+    try:
+        _db_cleanup("bind_codes")
+        db_delete("bind_codes", "name", p["name"])
+        db_insert("bind_codes", {"code": code, "name": p["name"], "expires": _iso_in(900)})
+    except Exception:
+        return jsonify({"error": "Не удалось создать код привязки, попробуйте позже"}), 500
+    return jsonify({"code": code, "expires_in": 900})
 
 
 # Запрос кода восстановления пароля (отправляется в Telegram)
