@@ -1275,12 +1275,31 @@
             const typed = prompt('Для подтверждения введите слово УДАЛИТЬ:');
             if ((typed || '').trim().toUpperCase() !== 'УДАЛИТЬ') { showToast('Удаление отменено', true); return; }
             try {
-                const res = await api('/api/profile/full', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
+                let res = null;
+                let usedFallback = false;
+                try {
+                    res = await api('/api/profile/full', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
+                } catch (e) {
+                    // старый бэкенд без /api/profile/full — удаляем поштучно
+                    if (/405|404|Не найден|Ошибка 4/i.test(e.message || '')) {
+                        usedFallback = true;
+                        const mine = posts.filter(p => p.author === userData.name);
+                        for (const p of mine) {
+                            try {
+                                await api('/api/posts/' + p.id, { method: 'DELETE', body: JSON.stringify({ user: userData.name }) });
+                            } catch (err) { /* пропускаем, чтобы не прервать очистку */ }
+                        }
+                        await api('/api/profile', { method: 'DELETE', body: JSON.stringify({ name: userData.name }) });
+                        res = { removed: { posts: mine.length } };
+                    } else {
+                        throw e;
+                    }
+                }
                 localStorage.removeItem('shersh_user');
                 localStorage.removeItem(POSTS_CACHE_KEY);
                 localStorage.removeItem('shersh_post_draft');
                 const rem = res && res.removed ? res.removed : null;
-                showToast(rem ? `Удалено. Историй: ${rem.posts || 0}` : 'Все данные удалены');
+                showToast(rem ? `Удалено. Историй: ${rem.posts || 0}${usedFallback ? ' (частично)' : ''}` : 'Все данные удалены');
                 setTimeout(() => location.reload(), 1600);
             } catch (e) { showToast(e.message, true); }
         });
