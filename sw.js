@@ -1,12 +1,12 @@
-// Service Worker для «Сказок Шерша»
-// Кэширует статические файлы (оболочку сайта) для быстрой загрузки и офлайн-режима.
-const CACHE = 'shersha-cache-v15';
+﻿// Service Worker РґР»СЏ В«РЎРєР°Р·РѕРє РЁРµСЂС€Р°В»
+// РљСЌС€РёСЂСѓРµС‚ СЃС‚Р°С‚РёС‡РµСЃРєРёРµ С„Р°Р№Р»С‹ (РѕР±РѕР»РѕС‡РєСѓ СЃР°Р№С‚Р°) РґР»СЏ Р±С‹СЃС‚СЂРѕР№ Р·Р°РіСЂСѓР·РєРё Рё РѕС„Р»Р°Р№РЅ-СЂРµР¶РёРјР°.
+const CACHE = 'shersha-cache-v16';
 const ASSETS = [
   './',
   './index.html',
   './shersh_cursor.png',
-  './styles.css?v=8',
-  './app.js?v=11',
+  './styles.css?v=9',
+  './app.js?v=12',
   './tale.js?v=4',
   './player.js?v=1',
   './admin.css',
@@ -28,13 +28,13 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // API-запросы (Netrun) не кэшируем — данные живут в localStorage; пропускаем.
+  // API-Р·Р°РїСЂРѕСЃС‹ (Netrun) РЅРµ РєСЌС€РёСЂСѓРµРј вЂ” РґР°РЅРЅС‹Рµ Р¶РёРІСѓС‚ РІ localStorage; РїСЂРѕРїСѓСЃРєР°РµРј.
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api')) {
     return;
   }
 
-  // Код сайта (страницы и скрипты) всегда сначала из сети — иначе кеш держит
-  // старые файлы после обновления. Картинки и прочее по-прежнему из кеша.
+  // РљРѕРґ СЃР°Р№С‚Р° (СЃС‚СЂР°РЅРёС†С‹ Рё СЃРєСЂРёРїС‚С‹) РІСЃРµРіРґР° СЃРЅР°С‡Р°Р»Р° РёР· СЃРµС‚Рё вЂ” РёРЅР°С‡Рµ РєРµС€ РґРµСЂР¶РёС‚
+  // СЃС‚Р°СЂС‹Рµ С„Р°Р№Р»С‹ РїРѕСЃР»Рµ РѕР±РЅРѕРІР»РµРЅРёСЏ. РљР°СЂС‚РёРЅРєРё Рё РїСЂРѕС‡РµРµ РїРѕ-РїСЂРµР¶РЅРµРјСѓ РёР· РєРµС€Р°.
   const isCode = e.request.destination === 'document'
     || e.request.destination === 'script'
     || e.request.destination === 'style'

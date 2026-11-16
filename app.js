@@ -137,6 +137,7 @@
                 try {
                     posts = JSON.parse(cached);
                     renderPosts();
+                    syncTagFromHash();
                 } catch (e) {}
             }
             try {
@@ -149,6 +150,7 @@
                 }));
                 localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
                 renderPosts();
+                syncTagFromHash();
                 updateBell();
             } catch (e) {
                 if (localStorage.getItem(POSTS_CACHE_KEY)) {
@@ -1180,16 +1182,71 @@
         }
 
         // Фильтр по тегу (клик по #тег)
-        window.filterByTag = function(tag) {
-            if (activeTag === tag) {
-                activeTag = null;
-                showToast('Фильтр по тегу снят');
+        // Тег как адрес: #tag/зима — ссылку можно отправить или добавить в закладки
+        const TAG_PREFIX = '#tag/';
+
+        function tagHash(tag) {
+            return TAG_PREFIX + encodeURIComponent(tag);
+        }
+
+        window.applyTagFilter = function(tag, opts) {
+            activeTag = tag || null;
+            const banner = document.getElementById('tagBanner');
+            const text = document.getElementById('tagBannerText');
+            if (activeTag) {
+                if (banner && text) {
+                    text.textContent = 'Тег: #' + activeTag;
+                    banner.style.display = 'flex';
+                }
+                document.title = '#' + activeTag + ' — Сказки Шерша';
             } else {
-                activeTag = tag;
-                showToast('Показаны истории с тегом #' + tag);
+                if (banner) banner.style.display = 'none';
+                document.title = 'Сказки Шерша';
             }
             renderPosts();
+            if (!(opts && opts.silent)) {
+                showToast(activeTag ? 'Показаны истории с тегом #' + activeTag : 'Фильтр по тегу снят');
+            }
         };
+
+        window.filterByTag = function(tag) {
+            if (activeTag === tag) {
+                window.clearTagFilter();
+                return;
+            }
+            try { history.replaceState(null, '', tagHash(tag)); } catch (e) { location.hash = tagHash(tag); }
+            window.applyTagFilter(tag);
+            if (typeof collapseTagsCloud === 'function') collapseTagsCloud();
+        };
+
+        window.clearTagFilter = function() {
+            try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
+            window.applyTagFilter(null);
+        };
+
+        function syncTagFromHash() {
+            const match = (location.hash || '').match(/^#tag\/(.+)$/);
+            if (match) {
+                let tag = match[1];
+                try { tag = decodeURIComponent(tag); } catch (e) { /* оставляем как есть */ }
+                if (tag !== activeTag) window.applyTagFilter(tag, { silent: true });
+            } else if (activeTag) {
+                window.applyTagFilter(null, { silent: true });
+            }
+        }
+
+        window.addEventListener('hashchange', syncTagFromHash);
+        window.addEventListener('load', syncTagFromHash);
+        setTimeout(syncTagFromHash, 2000);
+
+        function collapseTagsCloud() {
+            const cloud = document.getElementById('allTagsCloud');
+            const btn = document.getElementById('allTagsBtn');
+            if (cloud && cloud.style.display === 'block') {
+                cloud.style.display = 'none';
+                if (btn) btn.textContent = '🏷 Показать все теги';
+            }
+        }
 
         // Облако всех тегов
         window.toggleAllTags = function() {
@@ -1857,7 +1914,7 @@
         function updateOGForCurrentPost() {
             const m = location.hash.match(/^#post-(\d+)/);
             if (!m) {
-                document.title = 'Сказки Шерша';
+                if (!/^#tag\//.test(location.hash || '')) document.title = 'Сказки Шерша';
                 return;
             }
             const post = posts.find(p => p.id === Number(m[1]));
