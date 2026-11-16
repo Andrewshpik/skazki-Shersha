@@ -547,6 +547,79 @@ def delete_comment(comment_id):
     return jsonify({"error": "Нет прав на удаление комментария"}), 403
 
 
+# --- Модерация: жалобы ---
+@app.route("/api/report", methods=["POST"])
+@rate_limit(limit=15, window=300)  # не больше 15 жалоб с одного IP за 5 минут
+def report():
+    data = request.json or {}
+    rtype = (data.get("type") or "").strip()
+    target_id = str((data.get("target_id") or "")).strip()
+    target_author = (data.get("target_author") or "").strip()
+    reporter = (data.get("reporter") or "").strip()
+    reason = (data.get("reason") or "").strip()
+    if rtype not in ("post", "comment", "user") or not target_id:
+        return jsonify({"error": "Некорректная жалоба"}), 400
+    if len(reason) > 500:
+        reason = reason[:500]
+    db_insert("reports", {
+        "type": rtype, "target_id": target_id,
+        "target_author": target_author, "reporter": reporter, "reason": reason,
+    })
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/reports", methods=["GET"])
+def list_reports():
+    # доступно всем (для модерации); пока просто возвращаем список по дате
+    rows = db_select("reports", params={"select": "*", "order": "created_at.desc"})
+    return jsonify(rows)
+
+
+@app.route("/api/reports/<int:report_id>", methods=["DELETE"])
+def delete_report(report_id):
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
+    if not (profiles and profiles[0].get("is_admin")):
+        return jsonify({"error": "Нет прав"}), 403
+    db_delete("reports", "id", report_id)
+    return jsonify({"status": "ok"})
+
+
+# --- Модерация: баны ---
+@app.route("/api/ban", methods=["POST"])
+def add_ban():
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    target = (data.get("target") or "").strip()
+    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
+    if not (profiles and profiles[0].get("is_admin") and target):
+        return jsonify({"error": "Нет прав или нет цели"}), 403
+    db_insert("banned", {"name": target, "reason": (data.get("reason") or "")[:300]})
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/ban", methods=["DELETE"])
+def remove_ban():
+    data = request.json or {}
+    user = (data.get("user") or "").strip()
+    target = (data.get("target") or "").strip()
+    profiles = db_select("profiles", params={"select": "is_admin", "name": f"eq.{user}"})
+    if not (profiles and profiles[0].get("is_admin") and target):
+        return jsonify({"error": "Нет прав или нет цели"}), 403
+    db_delete("banned", "name", target)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/ban/check", methods=["GET"])
+def check_ban():
+    name = request.args.get("name", "").strip()
+    if not name:
+        return jsonify({"banned": False})
+    rows = db_select("banned", params={"select": "name", "name": f"eq.{name}"})
+    return jsonify({"banned": bool(rows)})
+
+
 @app.route("/api/upload", methods=["POST"])
 @rate_limit(limit=30, window=60)  # не больше 30 загрузок файлов в минуту
 def upload_image():

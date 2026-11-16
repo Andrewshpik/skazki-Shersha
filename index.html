@@ -607,6 +607,9 @@
                     <span>📝 Историй: <b id="otherStatPosts">0</b></span>
                     <span>👍 Лайков: <b id="otherStatLikes">0</b></span>
                 </div>
+                <div style="margin-top: 12px;">
+                    <button class="btn btn-delete" id="banUserBtn" style="display: none;" onclick="banUser()">🚫 Забанить</button>
+                </div>
             </div>
         </div>
     </main>
@@ -873,7 +876,20 @@
                 loginModal.style.display = 'flex';
             } else {
                 updateHeaderUI();
+                if (userData.name && !userData.isGuest) checkBan();
             }
+        }
+
+        // Если пользователь забанен — показываем сообщение и выходим из аккаунта
+        async function checkBan() {
+            try {
+                const r = await api('/api/ban/check?name=' + encodeURIComponent(userData.name));
+                if (r.banned) {
+                    showToast('Ваш аккаунт заблокирован модератором', true);
+                    localStorage.removeItem('shersh_user');
+                    setTimeout(() => location.reload(), 1500);
+                }
+            } catch (e) { /* сервер спит — игнорируем */ }
         }
 
         document.getElementById('registerBtn').addEventListener('click', async () => {
@@ -1062,7 +1078,28 @@
             document.getElementById('otherStatPosts').textContent = authorPosts.length;
             document.getElementById('otherStatLikes').textContent = totalLikes;
 
+            // Кнопка бана видна только админу и не для самого себя
+            window.__currentProfileName = authorName;
+            const banBtn = document.getElementById('banUserBtn');
+            if (userData.is_admin && authorName !== userData.name) {
+                banBtn.style.display = 'inline-block';
+            } else {
+                banBtn.style.display = 'none';
+            }
+
             showPage('other');
+        };
+
+        // Бан/разбан пользователя (только админ)
+        window.banUser = async function() {
+            const target = window.__currentProfileName;
+            if (!target) return;
+            const method = window.confirm('Забанить пользователя ' + target + '?') ? 'POST' : null;
+            if (!method) return;
+            try {
+                await api('/api/ban', { method: 'POST', body: JSON.stringify({ user: userData.name, target }) });
+                showToast('Пользователь ' + target + ' забанен');
+            } catch (e) { showToast(e.message, true); }
         };
 
         document.getElementById('avatarInput').addEventListener('change', async function(e) {
@@ -1244,6 +1281,7 @@
                         <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
                             🔗 Поделиться
                         </button>
+                        ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться">🚩</button>` : ''}
                     </div>
                 `;
                 postsContainer.appendChild(postElement);
@@ -1307,6 +1345,27 @@
             // Запасной вариант: копируем ссылку на карточку
             const url = location.origin + location.pathname + '#post-' + post.id;
             navigator.clipboard.writeText(url).then(() => showToast('Ссылка скопирована!')).catch(() => showToast('Не удалось скопировать', true));
+        };
+
+        // Модерация: пожаловаться
+        window.reportPost = async function(id) {
+            const post = posts.find(p => p.id === id);
+            if (!post) return;
+            const reason = window.prompt('Опишите причину жалобы (необязательно):', '').trim();
+            if (reason === null) return; // отмена
+            try {
+                await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'post', target_id: String(id), target_author: post.author, reporter: userData.name, reason }) });
+                showToast('Жалоба отправлена. Спасибо!');
+            } catch (e) { showToast(e.message, true); }
+        };
+
+        window.reportComment = async function(commentId, author) {
+            const reason = window.prompt('Опишите причину жалобы (необязательно):', '').trim();
+            if (reason === null) return;
+            try {
+                await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'comment', target_id: String(commentId), target_author: author, reporter: userData.name, reason }) });
+                showToast('Жалоба отправлена. Спасибо!');
+            } catch (e) { showToast(e.message, true); }
         };
 
         // Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
@@ -1460,15 +1519,19 @@
                     const editBtn = own
                         ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий">✏️</button>`
                         : '';
-                    const deleteBtn = own
+const deleteBtn = own
                         ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий">🗑️</button>`
                         : '';
-                    
+                    const reportBtn = !userData.isGuest && userData.name
+                        ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться">🚩</button>`
+                        : '';
+
                     div.innerHTML = `
                         <div class="comment-header">
                             <span class="comment-author">${escapeHTML(c.author)}</span>
                             <span>${formatDate(c.date)}</span>
                             ${editBtn}
+                            ${reportBtn}
                             ${deleteBtn}
                         </div>
                         <div class="comment-text" data-cid="${c.id}">${escapeHTML(c.text)}</div>
