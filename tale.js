@@ -144,6 +144,10 @@
         return list[Math.floor(Math.random() * list.length)];
     }
 
+    function pickIndex(list) {
+        return Math.floor(Math.random() * list.length);
+    }
+
     function byGender(forms, gender) {
         const parts = forms.split('|');
         return gender === 'f' ? parts[1] : parts[0];
@@ -153,13 +157,51 @@
         return text.charAt(0).toUpperCase() + text.slice(1);
     }
 
+    const EXTRA_TROUBLES = [
+        'Но в округе начали пропадать звуки: сначала кузнечики, потом ручей, потом даже эхо.',
+        'Но однажды утром на всех крышах выросли белые цветы, и никто не знал, к добру это или нет.',
+        'Но в доме поселился сквозняк, который гасил свечи ровно в ту минуту, когда сказка была почти досказана.',
+        'Но с неба пропала луна, и ночь стала такой длинной, что устала даже она сама.',
+        'Но на дороге появился камень, через который не перелетала ни одна птица.',
+        'Но кто-то стал по ночам вязать на деревьях узлы — и к утру тропинки путались.'
+    ];
+
+    const EXTRA_ACTIONS = [
+        'они нашли ту самую тропинку, которую искали все лето.',
+        'они собрали звуки обратно — по одному, в мешочек.',
+        'они развязали узлы на деревьях, и тропинки расправились.',
+        'они отнесли камень к речке и пустили его по воде, как лодку.',
+        'они зажгли свечу так, чтобы сквозняк не дотянулся.',
+        'они вернули луну на место и уложили ночь спать.'
+    ];
+
+    const EXTRA_ENDINGS = [
+        'С тех пор звуки в этих краях возвращаются сами, вовремя и все сразу.',
+        'С тех пор белые цветы на крышах считают знаком доброй ночи.',
+        'С тех пор свечи горят ровно, а сквозняк стесняется заходить в дом.',
+        'С тех пор ночь стала обычной длины — и на сон хватает всем.',
+        'С тех пор по той дороге снова ходят и люди, и птицы.',
+        'С тех пор тропинки в лесу не путаются, если идти по ним с добрым словом.'
+    ];
+
+    const EXTRA_MORALS = [
+        'И правда: если чего-то стало тихо — это ещё не значит, что оно ушло.',
+        'Одному порой не хватает чуть-чуть — и как раз это «чуть-чуть» приносит друг.',
+        'Вот и всё: сказка закрывает глаза, а тепло остаётся.',
+        'Говорят, кто помогает до утра, тому утро и спасибо скажет.',
+        'Простое «я рядом» иногда сильнее самого трудного дела.',
+        'Спи крепко: пока звуки возвращаются, мир на месте.'
+    ];
+
     function makeTale() {
-        const hero = pick(HEROES);
+        const heroIdx = pickIndex(HEROES);
+        const artifactIdx = pickIndex(ARTIFACTS);
+        const hero = HEROES[heroIdx];
         const place = pick(PLACES);
-        const artifact = pick(ARTIFACTS);
-        const trouble = pick(TROUBLES);
-        const ending = pick(ENDINGS);
-        const moral = pick(MORALS);
+        const artifact = ARTIFACTS[artifactIdx];
+        const trouble = pick(TROUBLES.concat(EXTRA_TROUBLES));
+        const ending = pick(ENDINGS.concat(EXTRA_ENDINGS));
+        const moral = pick(MORALS.concat(EXTRA_MORALS));
 
         let helper = pick(HELPERS);
         let guard = 0;
@@ -173,16 +215,53 @@
             hero.intro,
             'Однажды ' + hero.n + ' ' + byGender('нашёл|нашла', hero.g) + ' ' + artifact.a + '.',
             trouble,
-            helper + ' Вдвоём ' + pick(ACTIONS),
+            helper + ' Вдвоём ' + pick(ACTIONS.concat(EXTRA_ACTIONS)),
             ending,
             moral
         ];
 
         return {
             title: capitalize(hero.n) + ' и ' + artifact.n,
-            text: paragraphs.join('\n\n')
+            text: paragraphs.join('\n\n'),
+            heroIdx: heroIdx,
+            artifactIdx: artifactIdx,
+            part: 1
+        };
+    }
+
+    // Продолжение: тот же герой и та же находка, но новая ночь и новая беда
+    function makeContinuation(prev) {
+        const heroIdx = (prev && typeof prev.heroIdx === 'number') ? prev.heroIdx : pickIndex(HEROES);
+        const artifactIdx = (prev && typeof prev.artifactIdx === 'number') ? prev.artifactIdx : pickIndex(ARTIFACTS);
+        const hero = HEROES[heroIdx];
+        const artifact = ARTIFACTS[artifactIdx];
+        const part = (prev && prev.part ? prev.part : 1) + 1;
+
+        let helper = pick(HELPERS);
+        let guard = 0;
+        while (helper.indexOf(hero.n) !== -1 && guard < 10) {
+            helper = pick(HELPERS);
+            guard++;
+        }
+
+        const paragraphs = [
+            'Прошло немного времени, и ' + hero.n + ' снова ' + byGender('вспомнил|вспомнила', hero.g) + ' ту ночь.',
+            pick(TROUBLES.concat(EXTRA_TROUBLES)),
+            capitalize(hero.n) + ' ' + byGender('взял|взяла', hero.g) + ' ' + artifact.a + ' и ' + byGender('отправился|отправилась', hero.g) + ' в путь.',
+            helper + ' Вдвоём ' + pick(ACTIONS.concat(EXTRA_ACTIONS)),
+            pick(ENDINGS.concat(EXTRA_ENDINGS)),
+            pick(MORALS.concat(EXTRA_MORALS))
+        ];
+
+        return {
+            title: capitalize(hero.n) + ' и ' + artifact.n + ' — часть ' + part,
+            text: paragraphs.join('\n\n'),
+            heroIdx: heroIdx,
+            artifactIdx: artifactIdx,
+            part: part
         };
     }
 
     window.makeTale = makeTale;
+    window.makeContinuation = makeContinuation;
 })();

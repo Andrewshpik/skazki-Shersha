@@ -866,6 +866,7 @@
             <div class="tale-text" id="taleText"></div>
             <div class="tale-actions">
                 <button class="btn btn-soft" id="taleAgainBtn">✨ Ещё сказку</button>
+                <button class="btn btn-soft" id="taleContinueBtn">⏭ Продолжить</button>
                 <button class="btn btn-soft" id="taleCopyBtn">📋 Скопировать</button>
                 <button class="btn" id="talePublishBtn">📖 Опубликовать</button>
             </div>
@@ -2636,25 +2637,57 @@
 
         // «Сказка на ночь»: сборка новой сказки прямо в браузере
         const taleModal = document.getElementById('taleModal');
+        const LAST_TALE_KEY = 'shersh_last_tale';
         let currentTale = null;
+
+        function saveTale(tale) {
+            try { localStorage.setItem(LAST_TALE_KEY, JSON.stringify(tale)); } catch (e) { /* приватный режим */ }
+        }
+
+        function loadTale() {
+            try {
+                const raw = localStorage.getItem(LAST_TALE_KEY);
+                if (!raw) return null;
+                const tale = JSON.parse(raw);
+                return (tale && tale.text && tale.title) ? tale : null;
+            } catch (e) { return null; }
+        }
+
+        function showTale(tale) {
+            if (!tale) return;
+            currentTale = tale;
+            document.getElementById('taleTitle').textContent = tale.title;
+            document.getElementById('taleText').textContent = tale.text;
+            document.getElementById('taleText').scrollTop = 0;
+            saveTale(tale);
+        }
 
         function renderTale() {
             if (typeof window.makeTale !== 'function') {
                 showToast('Генератор сказок не загрузился — обнови страницу', true);
                 return;
             }
-            currentTale = window.makeTale();
-            document.getElementById('taleTitle').textContent = currentTale.title;
-            document.getElementById('taleText').textContent = currentTale.text;
-            document.getElementById('taleText').scrollTop = 0;
+            showTale(window.makeTale());
         }
 
         window.randomTale = function() {
-            renderTale();
+            const saved = loadTale();
+            if (saved) showTale(saved);
+            else renderTale();
             taleModal.style.display = 'flex';
         };
 
         document.getElementById('taleAgainBtn').addEventListener('click', renderTale);
+
+        document.getElementById('taleContinueBtn').addEventListener('click', () => {
+            if (typeof window.makeContinuation !== 'function') {
+                showToast('Генератор сказок не загрузился — обнови страницу', true);
+                return;
+            }
+            if (!currentTale) { renderTale(); return; }
+            showTale(window.makeContinuation(currentTale));
+        });
+
         document.getElementById('taleCloseBtn').addEventListener('click', () => { taleModal.style.display = 'none'; });
 
         document.getElementById('taleCopyBtn').addEventListener('click', async () => {
