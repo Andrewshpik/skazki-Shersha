@@ -576,24 +576,9 @@
             document.getElementById('feed-page').style.display = page === 'feed' ? 'block' : 'none';
             document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
             document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
-            const banner = document.getElementById('feedBanner');
-            if (banner) banner.classList.toggle('is-off', page !== 'feed');
             updateHeaderUI();
             if (page === 'profile') updateProfileUI();
         }
-
-        // Баннер в шапке: при прокрутке сворачиваем, чтобы шапка не занимала пол-экрана
-        (function () {
-            const banner = document.getElementById('feedBanner');
-            if (!banner) return;
-            const offset = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-            const sync = () => banner.classList.toggle('is-collapsed', offset() > 120);
-            // скроллиться может и документ, и внутренний контейнер — ловим событие на фазе перехвата
-            document.addEventListener('scroll', sync, { passive: true, capture: true });
-            window.addEventListener('scroll', sync, { passive: true });
-            window.addEventListener('resize', sync, { passive: true });
-            sync();
-        })();
 
         function updateProfileUI() {
             document.getElementById('profileNameDisplay').textContent = userData.name;
