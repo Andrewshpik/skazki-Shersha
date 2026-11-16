@@ -143,6 +143,23 @@ def _tg_send(chat_id, text):
         pass
 
 
+def _tg_send_checked(chat_id, text):
+    """Отправляет сообщение и возвращает (успех, причина_ошибки)."""
+    if not BOT_TOKEN:
+        return False, "BOT_TOKEN не задан"
+    if not chat_id:
+        return False, "нет chat_id"
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                          json={"chat_id": chat_id, "text": text}, timeout=15)
+        data = r.json()
+        if data.get("ok"):
+            return True, ""
+        return False, str(data.get("description") or "Telegram отклонил отправку")
+    except Exception as e:
+        return False, str(e)
+
+
 def _is_expired(value):
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -286,6 +303,51 @@ def telegram_bind():
     return jsonify({"status": "ok"})
 
 
+# Диагностика бота: проверка токена, регистрация вебхука, статус. Только для админа.
+@app.route("/api/telegram/setup", methods=["POST"])
+@rate_limit(limit=5, window=300)
+def telegram_setup():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    password = (data.get("password") or "").strip()
+
+    p = find_profile(name)
+    if not p:
+        return jsonify({"error": "Пользователь не найден"}), 404
+    if not p.get("is_admin"):
+        return jsonify({"error": "Нужны права администратора"}), 403
+    if not p.get("password_hash") or not verify_password(password, p["password_hash"]):
+        return jsonify({"error": "Неверный пароль"}), 401
+    if not BOT_TOKEN:
+        return jsonify({"error": "BOT_TOKEN не задан в переменных окружения"}), 400
+
+    webhook_url = (data.get("webhook_url") or os.environ.get("WEBHOOK_URL")
+                   or "https://shersh-auth.de1.netrun.io/webhook")
+    result = {"webhook_url": webhook_url}
+
+    try:
+        result["getMe"] = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getMe", timeout=15).json()
+    except Exception as e:
+        result["getMe"] = {"error": str(e)}
+
+    try:
+        result["setWebhook"] = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+            json={"url": webhook_url, "allowed_updates": ["message"]}, timeout=20
+        ).json()
+    except Exception as e:
+        result["setWebhook"] = {"error": str(e)}
+
+    try:
+        result["getWebhookInfo"] = requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=15
+        ).json()
+    except Exception as e:
+        result["getWebhookInfo"] = {"error": str(e)}
+
+    return jsonify(result)
+
+
 # Запрос кода восстановления пароля (отправляется в Telegram)
 @app.route("/api/forgot-password", methods=["POST"])
 @rate_limit(limit=5, window=300)  # не больше 5 запросов смены с одного IP за 5 минут
@@ -301,7 +363,7 @@ def forgot_password():
     name = profile.get("name") or name
     tid = profile.get("telegram_id")
     if not tid:
-        return jsonify({"error": "К этому профилю не привязан Telegram"}), 400
+        return jsonify({"error": "К профилю не привязан Telegram. Войдите в профиль, нажмите «Привязать Telegram» и повторите."}), 400
 
     code = str(secrets.randbelow(1000000)).zfill(6)
     try:
@@ -310,7 +372,18 @@ def forgot_password():
         db_insert("reset_codes", {"code": code, "name": name, "expires": _iso_in(600)})
     except Exception:
         return jsonify({"error": "Не удалось создать код, попробуйте позже"}), 500
-    _tg_send(tid, f"🔑 Код восстановления пароля на сайте «Сказки Шерша»: {code}\nВведите его на сайте. Код действителен 10 минут.")
+
+    sent, reason = _tg_send_checked(
+        tid, f"🔑 Код восстановления пароля на сайте «Сказки Шерша»: {code}\nВведите его на сайте. Код действителен 10 минут."
+    )
+    if not sent:
+        try:
+            db_delete("reset_codes", "code", code)
+        except Exception:
+            pass
+        if "blocked" in reason.lower() or "chat not found" in reason.lower() or "start" in reason.lower():
+            return jsonify({"error": "Telegram не даёт отправить сообщение. Откройте бота @shersh_auth_bot, нажмите «Старт» и попробуйте снова."}), 400
+        return jsonify({"error": "Telegram не доставил код: " + reason[:120]}), 400
     return jsonify({"status": "ok"})
 
 
