@@ -1,12 +1,12 @@
 // Service Worker для «Сказок Шерша»
 // Кэширует статические файлы (оболочку сайта) для быстрой загрузки и офлайн-режима.
-const CACHE = 'shersha-cache-v3';
+const CACHE = 'shersha-cache-v4';
 const ASSETS = [
   './',
   './index.html',
   './shersh_cursor.png',
   './banner.jpg',
-  './tale.js',
+  './tale.js?v=4',
   './manifest.json'
 ];
 
@@ -28,6 +28,26 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api')) {
     return;
   }
+
+  // Код сайта (страницы и скрипты) всегда сначала из сети — иначе кеш держит
+  // старые файлы после обновления. Картинки и прочее по-прежнему из кеша.
+  const isCode = e.request.destination === 'document'
+    || e.request.destination === 'script'
+    || /\.(html|js)$/i.test(url.pathname);
+
+  if (isCode) {
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')))
+    );
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
