@@ -419,6 +419,12 @@
         .btn-cancel:hover { background-color: var(--comment-bg); }
         .btn-delete { background-color: var(--error-color); color: white; }
         .btn-delete:hover { background-color: #c0392b; }
+        .ui-dialog-text { margin: 0 0 10px; line-height: 1.5; color: var(--text-color); text-align: center; }
+        .ui-dialog .modal-content { max-width: 440px; }
+        .ui-dialog-input { width: 100%; padding: 12px 15px; border: 2px solid var(--border-color); border-radius: 10px;
+            background-color: var(--input-bg); color: var(--text-color); font-family: inherit; font-size: 1rem; resize: vertical; }
+        .ui-dialog-input:focus { outline: none; border-color: var(--accent-color); }
+        .ui-dialog .form-error { display: none; margin-top: 8px; }
 
         #loginModal .modal-content { text-align: center; }
         #loginModal label { display: block; text-align: left; margin-bottom: 5px; font-size: 0.9rem; }
@@ -1061,6 +1067,115 @@
             }, 3000);
         }
 
+        // --- Свои окна вместо нативных alert/confirm/prompt ---
+        function openUiDialog(opts) {
+            const o = Object.assign({
+                title: '', text: '', value: '', placeholder: '', inputLabel: '',
+                multiline: false, hasInput: false, okText: 'OK', cancelText: 'Отмена',
+                danger: false, requireText: null
+            }, opts || {});
+
+            return new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.className = 'modal-overlay ui-dialog';
+                overlay.style.display = 'flex';
+
+                const box = document.createElement('div');
+                box.className = 'modal-content';
+                box.setAttribute('role', 'dialog');
+                box.setAttribute('aria-modal', 'true');
+                box.setAttribute('aria-label', o.title);
+
+                const h = document.createElement('h2');
+                h.style.textAlign = 'center';
+                h.textContent = o.title;
+                box.appendChild(h);
+
+                if (o.text) {
+                    const p = document.createElement('p');
+                    p.className = 'ui-dialog-text';
+                    p.textContent = o.text;
+                    box.appendChild(p);
+                }
+
+                let field = null;
+                const err = document.createElement('div');
+                err.className = 'form-error';
+
+                if (o.hasInput) {
+                    if (o.inputLabel) {
+                        const lbl = document.createElement('label');
+                        lbl.textContent = o.inputLabel;
+                        box.appendChild(lbl);
+                    }
+                    field = document.createElement(o.multiline ? 'textarea' : 'input');
+                    if (o.multiline) { field.rows = 3; } else { field.type = 'text'; }
+                    field.value = o.value || '';
+                    field.placeholder = o.placeholder || '';
+                    field.className = 'ui-dialog-input';
+                    box.appendChild(field);
+                    box.appendChild(err);
+                }
+
+                const btns = document.createElement('div');
+                btns.className = 'modal-buttons';
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'btn btn-cancel';
+                cancelBtn.textContent = o.cancelText;
+
+                const okBtn = document.createElement('button');
+                okBtn.type = 'button';
+                okBtn.className = 'btn' + (o.danger ? ' btn-delete' : '');
+                okBtn.textContent = o.okText;
+
+                btns.appendChild(cancelBtn);
+                btns.appendChild(okBtn);
+                box.appendChild(btns);
+                overlay.appendChild(box);
+                document.body.appendChild(overlay);
+                if (typeof syncBodyScrollLock === 'function') syncBodyScrollLock();
+
+                const close = (result) => {
+                    overlay.remove();
+                    document.removeEventListener('keydown', onKey, true);
+                    if (typeof syncBodyScrollLock === 'function') syncBodyScrollLock();
+                    resolve(result);
+                };
+                const fail = (m) => { err.textContent = m; err.style.display = 'block'; };
+
+                const accept = () => {
+                    if (!field) return close(true);
+                    const v = field.value;
+                    if (o.requireText !== null && (v || '').trim().toUpperCase() !== o.requireText.toUpperCase()) {
+                        return fail('Введите «' + o.requireText + '» — иначе действие отменится');
+                    }
+                    return close(v);
+                };
+
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { e.preventDefault(); close(o.hasInput ? null : false); }
+                    else if (e.key === 'Enter' && (!field || !o.multiline)) { e.preventDefault(); accept(); }
+                };
+
+                okBtn.addEventListener('click', accept);
+                cancelBtn.addEventListener('click', () => close(o.hasInput ? null : false));
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(o.hasInput ? null : false); });
+                document.addEventListener('keydown', onKey, true);
+
+                setTimeout(() => { (field || okBtn).focus(); if (field && field.select) field.select(); }, 30);
+            });
+        }
+
+        function uiConfirm(title, text, opts) {
+            return openUiDialog(Object.assign({ title, text, okText: 'Подтвердить' }, opts || {}));
+        }
+
+        function uiPrompt(title, opts) {
+            return openUiDialog(Object.assign({ title, hasInput: true, okText: 'Сохранить' }, opts || {}));
+        }
+
         function openImageModal(src) {
             document.getElementById('fullImage').src = src;
             document.getElementById('imageModal').style.display = 'flex';
@@ -1359,8 +1474,8 @@
         window.banUser = async function() {
             const target = window.__currentProfileName;
             if (!target) return;
-            const method = window.confirm('Забанить пользователя ' + target + '?') ? 'POST' : null;
-            if (!method) return;
+            const ok = await uiConfirm('Забанить пользователя?', target + ' больше не сможет писать на сайте.', { okText: 'Забанить', danger: true });
+            if (!ok) return;
             try {
                 await api('/api/ban', { method: 'POST', body: JSON.stringify({ user: userData.name, target }) });
                 showToast('Пользователь ' + target + ' забанен');
@@ -1564,10 +1679,15 @@
         // Полное удаление всех своих данных
         document.getElementById('deleteAllDataBtn').addEventListener('click', async () => {
             if (!userData.name || userData.isGuest) { showToast('Войди в аккаунт', true); return; }
-            const ok = confirm('Удалить профиль, ВСЕ свои истории, комментарии и лайки?\nЭто действие необратимо.');
-            if (!ok) return;
-            const typed = prompt('Для подтверждения введите слово УДАЛИТЬ:');
-            if ((typed || '').trim().toUpperCase() !== 'УДАЛИТЬ') { showToast('Удаление отменено', true); return; }
+            const typed = await uiPrompt('Удалить всё безвозвратно?', {
+                text: 'Профиль, все твои истории, комментарии и лайки будут удалены. Это необратимо.',
+                inputLabel: 'Введите слово УДАЛИТЬ для подтверждения:',
+                placeholder: 'УДАЛИТЬ',
+                okText: 'Удалить навсегда',
+                danger: true,
+                requireText: 'УДАЛИТЬ'
+            });
+            if (typed === null) { showToast('Удаление отменено', false, 'info'); return; }
             try {
                 let res = null;
                 let usedFallback = false;
@@ -1986,8 +2106,15 @@
         window.reportPost = async function(id) {
             const post = posts.find(p => p.id === id);
             if (!post) return;
-            const reason = window.prompt('Опишите причину жалобы (необязательно):', '').trim();
-            if (reason === null) return; // отмена
+            const answer = await uiPrompt('Жалоба на историю', {
+                text: 'Расскажи, что не так — модератор посмотрит.',
+                inputLabel: 'Причина (необязательно):',
+                placeholder: 'Например: оскорбления',
+                multiline: true,
+                okText: 'Отправить'
+            });
+            if (answer === null) return;
+            const reason = answer.trim();
             try {
                 await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'post', target_id: String(id), target_author: post.author, reporter: userData.name, reason }) });
                 showToast('Жалоба отправлена. Спасибо!');
@@ -1995,8 +2122,15 @@
         };
 
         window.reportComment = async function(commentId, author) {
-            const reason = window.prompt('Опишите причину жалобы (необязательно):', '').trim();
-            if (reason === null) return;
+            const answer = await uiPrompt('Жалоба на комментарий', {
+                text: 'Расскажи, что не так — модератор посмотрит.',
+                inputLabel: 'Причина (необязательно):',
+                placeholder: 'Например: спам',
+                multiline: true,
+                okText: 'Отправить'
+            });
+            if (answer === null) return;
+            const reason = answer.trim();
             try {
                 await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'comment', target_id: String(commentId), target_author: author, reporter: userData.name, reason }) });
                 showToast('Жалоба отправлена. Спасибо!');
@@ -2300,8 +2434,15 @@
         });
 
         window.editComment = async function(commentId) {
-            const newText = window.prompt('Изменить комментарий:', '');
-            if (newText === null) return; // отмена
+            const current = document.querySelector('.comment-text[data-cid="' + commentId + '"]');
+            const newText = await uiPrompt('Изменить комментарий', {
+                text: 'Правки сразу увидишь в обсуждении.',
+                value: current ? current.textContent.trim() : '',
+                placeholder: 'Текст комментария',
+                multiline: true,
+                okText: 'Сохранить'
+            });
+            if (newText === null) return;
             const text = newText.trim();
             if (!text) { showToast('Пустой комментарий', true); return; }
             try {
@@ -2313,7 +2454,8 @@
         };
 
         window.deleteComment = async function(commentId) {
-            if (!window.confirm('Удалить этот комментарий?')) return;
+            const ok = await uiConfirm('Удалить комментарий?', 'Вернуть его потом не получится.', { okText: 'Удалить', danger: true });
+            if (!ok) return;
             try {
                 await api('/api/comments/' + commentId, { method: 'DELETE', body: JSON.stringify({ user: userData.name }) });
                 await loadPosts();
