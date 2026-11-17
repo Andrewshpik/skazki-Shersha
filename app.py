@@ -1272,6 +1272,78 @@ def admin_overview():
     })
 
 
+@app.route("/api/admin/stats", methods=["GET"])
+def admin_stats():
+    """Сводка для аналитики: итоги, топ историй и авторов, динамика за 14 дней."""
+    if not require_admin():
+        return jsonify({"error": "Нет прав"}), 403
+
+    def safe(table, params):
+        attempts = [params]
+        if "order" in params:
+            plain = dict(params)
+            plain.pop("order")
+            attempts.append(plain)
+        for attempt in attempts:
+            try:
+                return db_select(table, params=attempt)
+            except Exception:
+                continue
+        return []
+
+    posts = safe("posts", {"select": "id,title,author,date,likes,views", "order": "id.desc"})
+    comments = safe("comments", {"select": "id,author,date", "order": "id.desc"})
+    users = safe("profiles", {"select": "name"})
+
+    total_views = sum(int(p.get("views") or 0) for p in posts)
+    total_likes = sum(int(p.get("likes") or 0) for p in posts)
+    avg_views = round(total_views / len(posts), 1) if posts else 0
+
+    def top(items, key):
+        ranked = sorted(items, key=lambda p: int(p.get(key) or 0), reverse=True)[:5]
+        return [{
+            "id": p.get("id"),
+            "title": p.get("title") or "",
+            "author": p.get("author") or "",
+            "views": int(p.get("views") or 0),
+            "likes": int(p.get("likes") or 0),
+        } for p in ranked if int(p.get(key) or 0) > 0]
+
+    today = datetime.now(timezone.utc).date()
+    days = []
+    for offset in range(13, -1, -1):
+        day = today - timedelta(days=offset)
+        days.append({"date": day.isoformat(), "posts": 0, "comments": 0})
+    day_index = {d["date"]: d for d in days}
+
+    for post in posts:
+        key = str(post.get("date") or "")[:10]
+        if key in day_index:
+            day_index[key]["posts"] += 1
+    for comment in comments:
+        key = str(comment.get("date") or "")[:10]
+        if key in day_index:
+            day_index[key]["comments"] += 1
+
+    authors = {}
+    for post in posts:
+        name = post.get("author") or "—"
+        authors[name] = authors.get(name, 0) + 1
+    top_authors = [{"author": name, "posts": count}
+                   for name, count in sorted(authors.items(), key=lambda kv: -kv[1])[:5]]
+
+    return jsonify({
+        "totals": {
+            "posts": len(posts), "comments": len(comments), "users": len(users),
+            "likes": total_likes, "views": total_views, "avg_views": avg_views,
+        },
+        "top_by_views": top(posts, "views"),
+        "top_by_likes": top(posts, "likes"),
+        "top_authors": top_authors,
+        "daily": days,
+    })
+
+
 @app.route("/api/admin/user", methods=["PATCH"])
 def admin_update_user():
     """Меняет флаг администратора у профиля. Доступно только администратору."""

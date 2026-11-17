@@ -259,6 +259,71 @@ const API = 'https://shersh-auth.de1.netrun.io';
             document.getElementById('cntComments').textContent = '(' + (s.comments || 0) + ')';
         }
 
+        let analyticsData = null;
+
+        async function loadAnalytics() {
+            const panel = document.getElementById('panel-stats');
+            if (panel) panel.innerHTML = '<div class="empty">Загружаю статистику…</div>';
+            try {
+                analyticsData = await api('/api/admin/stats?user=' + encodeURIComponent(state.me.name));
+                renderAnalytics();
+            } catch (e) {
+                if (panel) panel.innerHTML = '<div class="empty">' + escapeHTML(e.message || 'Не удалось загрузить статистику') + '</div>';
+            }
+        }
+
+        function renderAnalytics() {
+            const panel = document.getElementById('panel-stats');
+            const a = analyticsData;
+            if (!panel || !a) return;
+            const t = a.totals || {};
+            const cards = [
+                ['Просмотры', t.views], ['Лайки', t.likes], ['В среднем на историю', t.avg_views],
+                ['Истории', t.posts], ['Комментарии', t.comments], ['Пользователи', t.users]
+            ];
+
+            const daily = a.daily || [];
+            const maxDaily = Math.max(1, ...daily.map(d => d.posts + d.comments));
+            const bars = daily.map(d => {
+                const total = d.posts + d.comments;
+                const height = Math.round((total / maxDaily) * 100);
+                const label = d.date.slice(8) + '.' + d.date.slice(5, 7);
+                return `<div class="bar-col" title="${d.date}: историй ${d.posts}, комментариев ${d.comments}">
+                    <div class="bar" style="height:${total ? Math.max(height, 5) : 0}%"></div>
+                    <span class="bar-label">${label}</span>
+                </div>`;
+            }).join('');
+
+            const rank = (items, metric) => items.length
+                ? `<ol class="rank">${items.map(i => `<li>
+                        <a href="index.html#post-${i.id}" target="_blank" rel="noopener">${escapeHTML(i.title || 'Без названия')}</a>
+                        <span class="rank-meta">${escapeHTML(i.author)} · ${metric === 'views' ? i.views + ' 👁' : i.likes + ' 👍'}</span>
+                    </li>`).join('')}</ol>`
+                : '<div class="empty">Пока нет данных</div>';
+
+            const authors = (a.top_authors || []).length
+                ? `<ol class="rank">${a.top_authors.map(x =>
+                    `<li>${escapeHTML(x.author)}<span class="rank-meta">${x.posts} историй</span></li>`).join('')}</ol>`
+                : '<div class="empty">Пока нет данных</div>';
+
+            panel.innerHTML = `
+                <div class="stats">${cards.map(([label, value]) =>
+                    `<div class="stat"><b>${value == null ? 0 : value}</b><span>${label}</span></div>`).join('')}</div>
+
+                <h3>Активность за 14 дней</h3>
+                <div class="chart">${bars}</div>
+                <div class="chart-legend">Высота — истории и комментарии за день</div>
+
+                <div class="two-col">
+                    <div><h3>Топ по просмотрам</h3>${rank(a.top_by_views || [], 'views')}</div>
+                    <div><h3>Топ по лайкам</h3>${rank(a.top_by_likes || [], 'likes')}</div>
+                </div>
+
+                <h3>Активные авторы</h3>
+                ${authors}
+            `;
+        }
+
         async function loadData() {
             const btn = document.getElementById('refreshBtn');
             btn.disabled = true;
@@ -351,6 +416,7 @@ const API = 'https://shersh-auth.de1.netrun.io';
                 document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
                 tab.classList.add('active');
                 document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+                if (tab.dataset.tab === 'stats') loadAnalytics();
             });
         });
 
@@ -366,7 +432,11 @@ const API = 'https://shersh-auth.de1.netrun.io';
             else if (act === 'delcomment') deleteComment(btn.dataset.id);
         });
 
-        document.getElementById('refreshBtn').addEventListener('click', loadData);
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadData();
+            const activeTab = document.querySelector('.tab.active');
+            if (activeTab && activeTab.dataset.tab === 'stats') loadAnalytics();
+        });
 
         const themeSelect = document.getElementById('themeSelect');
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
