@@ -1282,7 +1282,9 @@ def list_subscriptions():
     try:
         rows = db_select("subscriptions", params={"select": "author", "follower": f"eq.{user}"})
     except Exception as error:
-        return jsonify({"error": "Подписки недоступны: " + str(error)[:200]}), 500
+        response = getattr(error, "response", None)
+        detail = (" | " + response.text[:200]) if response is not None else ""
+        return jsonify({"error": "Подписки недоступны: " + str(error)[:160] + detail}), 500
     return jsonify({"authors": [r.get("author") for r in rows if r.get("author")]})
 
 
