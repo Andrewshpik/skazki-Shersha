@@ -6,6 +6,8 @@ import { validateImageFile, compressImage, uploadImage } from '../shared/lib/ima
 import { extractTags } from '../entities/post/model.js';
 import { setToastHandler, refreshOfflineButtons } from '../features/offline-save/index.js';
 import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
+import { trackView } from '../features/page-view/index.js';
+import { updateBell, initNotifications } from '../widgets/notifications/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -880,21 +882,7 @@ import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
         }
 
         // Просмотры: один запрос на историю за сессию, и только если колонка уже есть
-        const VIEWS_KEY = 'shersh_viewed';
-        function trackView(post) {
-            if (!post || post.views == null) return;
-            let seen;
-            try { seen = JSON.parse(sessionStorage.getItem(VIEWS_KEY) || '[]'); } catch (e) { seen = []; }
-            if (!Array.isArray(seen)) seen = [];
-            if (seen.includes(post.id)) return;
-            seen.push(post.id);
-            try { sessionStorage.setItem(VIEWS_KEY, JSON.stringify(seen)); } catch (e) { /* приватный режим */ }
-            api('/api/posts/' + post.id + '/view', { method: 'POST' })
-                .then(data => { if (data && typeof data.views === 'number') post.views = data.views; })
-                .catch(() => { /* просмотры не критичны */ });
-        }
-
-        function renderPosts() {
+function renderPosts() {
             postsContainer.innerHTML = '';
             
             if (posts.length === 0) {
@@ -1370,132 +1358,9 @@ window.copyPostLink = function(id) {
         };
 
         // Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
-        const NOTIF_KEY = 'shersh_notif_seen_at';
-        const NOTIF_LIKES_KEY = 'shersh_notif_likes';
 
-        function notifSeenAt() {
-            const t = Date.parse(localStorage.getItem(NOTIF_KEY) || '');
-            return Number.isFinite(t) ? t : 0;
-        }
-
-        function seenLikes() {
-            try { return JSON.parse(localStorage.getItem(NOTIF_LIKES_KEY) || '{}') || {}; } catch (e) { return {}; }
-        }
-
-        // Уведомления собираются из уже загруженной ленты: отдельной таблицы не нужно
-        function buildNotifications() {
-            const me = userData.name;
-            if (!me || userData.isGuest || !posts.length) return [];
-            const myNick = String(userData.nickname || '').toLowerCase();
-            const myCommentIds = new Set();
-            posts.forEach(p => (p.comments || []).forEach(c => { if (c.author === me) myCommentIds.add(c.id); }));
-
-            const likesSnapshot = seenLikes();
-            const items = [];
-
-            posts.forEach(post => {
-                const minePost = post.author === me;
-                (post.comments || []).forEach(c => {
-                    if (!c || c.author === me) return;
-                    const text = String(c.text || '').toLowerCase();
-                    const mentioned = text.includes('@' + me.toLowerCase()) || (myNick.length > 2 && text.includes(myNick));
-                    if (minePost) {
-                        items.push({ icon: '💬', kind: 'Комментарий', text: `${c.author} оставил комментарий`,
-                                     post, date: c.date, action: 'comments' });
-                    }
-                    if (mentioned) {
-                        items.push({ icon: '📣', kind: 'Упоминание', text: `${c.author} упомянул вас`,
-                                     post, date: c.date, action: 'comments' });
-                    }
-                    if (c.parent_id && myCommentIds.has(c.parent_id)) {
-                        items.push({ icon: '↩️', kind: 'Ответ', text: `${c.author} ответил на ваш комментарий`,
-                                     post, date: c.date, action: 'comments' });
-                    }
-                });
-                if (minePost) {
-                    const prev = Number(likesSnapshot[post.id] || 0);
-                    if ((post.likes || 0) > prev) {
-                        items.push({ icon: '👍', kind: 'Лайки', text: `новых лайков: ${post.likes - prev}`,
-                                     post, date: post.date, action: 'post' });
-                    }
-                }
-            });
-
-            const seenAt = notifSeenAt();
-            items.forEach(i => { i.unread = (Date.parse(i.date) || 0) > seenAt; });
-            items.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
-            return items;
-        }
-
-        function updateBell() {
-            const bellBtn = document.getElementById('bellBtn');
-            const bellBadge = document.getElementById('bellBadge');
-            if (!bellBtn || !userData.name || userData.isGuest) return;
-            const unread = buildNotifications().filter(n => n.unread).length;
-            if (unread > 0) {
-                bellBadge.textContent = unread > 99 ? '99+' : unread;
-                bellBadge.style.display = 'flex';
-            } else {
-                bellBadge.style.display = 'none';
-            }
-        }
-
-        function markNotificationsRead() {
-            localStorage.setItem(NOTIF_KEY, new Date().toISOString());
-            const snapshot = {};
-            posts.filter(p => p.author === userData.name).forEach(p => { snapshot[p.id] = p.likes || 0; });
-            try { localStorage.setItem(NOTIF_LIKES_KEY, JSON.stringify(snapshot)); } catch (e) { /* приватный режим */ }
-            const badge = document.getElementById('bellBadge');
-            if (badge) badge.style.display = 'none';
-        }
-
-        function renderNotifications() {
-            const list = document.getElementById('notifList');
-            if (!list) return;
-            const items = buildNotifications();
-            window.__notifItems = items;
-            if (!items.length) {
-                list.innerHTML = '<p style="text-align:center;color:#888;">Пока тихо. Здесь появятся комментарии, ответы, упоминания и новые лайки.</p>';
-                return;
-            }
-            list.innerHTML = items.map((n, i) => `
-                <button type="button" class="notif-item${n.unread ? ' is-unread' : ''}" onclick="openNotification(${i})">
-                    <span class="notif-icon" aria-hidden="true">${n.icon}</span>
-                    <span class="notif-body">
-                        <span class="notif-kind">${n.kind}</span>
-                        <span class="notif-text">${escapeHTML(n.text)}</span>
-                        <span class="notif-post">«${escapeHTML(n.post.title)}»</span>
-                    </span>
-                </button>`).join('');
-        }
-
-        window.openNotification = function(index) {
-            const item = (window.__notifItems || [])[index];
-            if (!item) return;
-            const modal = document.getElementById('notifModal');
-            if (modal) modal.style.display = 'none';
-            if (item.action === 'comments') {
-                const idx = posts.findIndex(p => p.id === item.post.id);
-                if (idx >= 0) { window.openComments(idx); return; }
-            }
-            showPage('feed');
-            scrollToPost(item.post.id);
-        };
-
-        document.getElementById('bellBtn').addEventListener('click', () => {
-            renderNotifications();
-            markNotificationsRead();
-            const modal = document.getElementById('notifModal');
-            if (modal) modal.style.display = 'flex';
-        });
-
-        const closeNotifBtn = document.getElementById('closeNotifBtn');
-        if (closeNotifBtn) closeNotifBtn.addEventListener('click', () => {
-            document.getElementById('notifModal').style.display = 'none';
-            updateBell();
-        });
-
-        window.toggleLike = async function(index) {
+// Уведомления собираются из уже загруженной ленты: отдельной таблицы не нужно
+                window.toggleLike = async function(index) {
             const post = posts[index];
             if (!userData.name || userData.isGuest) { showToast('Гости не могут ставить лайки!', true); return; }
             try {
@@ -2157,6 +2022,7 @@ window.copyPostLink = function(id) {
         // Слой совместимости: разметка зовёт функции через inline-обработчики,
         // а внутри ES-модуля они не попадают в глобальную область сами по себе.
         setToastHandler(showToast);
+        initNotifications();
         Object.assign(window, {
             closeImageModal,
             insertHint,

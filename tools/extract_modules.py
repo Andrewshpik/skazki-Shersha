@@ -1,33 +1,39 @@
-"""Этап 2: вынос готовых блоков из src/app/main.js в модули.
+"""Этап 2: вынос блоков из src/app/main.js в модули.
 
-Ищет объявления по имени (function NAME, window.NAME = function) и вырезает
-их с балансировкой скобок, затем добавляет указанные импорты.
+Ищет объявления по имени (function NAME, window.NAME = function, const NAME),
+вырезает их с балансировкой скобок, удаляет заданные фрагменты и добавляет импорты.
+Скрипт одноразовый: после успешного запуска список трогать не нужно.
 """
 import re
 import sys
 
 PATH = "src/app/main.js"
 
-IMPORTS = """import { setToastHandler, refreshOfflineButtons } from '../features/offline-save/index.js';
-import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
+IMPORTS = """import { trackView } from '../features/page-view/index.js';
+import { updateBell, initNotifications } from '../widgets/notifications/index.js';
 """
 
 FUNCTIONS = [
-    "postPageUrl",
-    "isSavedOffline",
-    "refreshOfflineButtons",
-    "taleOfDayIndex",
-    "renderTaleOfDay",
+    "trackView",
+    "notifSeenAt",
+    "seenLikes",
+    "buildNotifications",
+    "updateBell",
+    "markNotificationsRead",
+    "renderNotifications",
 ]
 
-# присваивания вида window.toggleOffline = async function (...) { ... };
-WINDOW_FUNCTIONS = ["toggleOffline", "openTaleOfDay"]
+WINDOW_FUNCTIONS = ["openNotification"]
 
-CONSTS = ["OFFLINE_CACHE"]
+CONSTS = ["VIEWS_KEY", "NOTIF_KEY", "NOTIF_LIKES_KEY"]
+
+SNIPPET_PATTERNS = [
+    r"document\.getElementById\('bellBtn'\)\.addEventListener\('click',\s*\(\)\s*=>\s*\{[\s\S]*?\n\s*\}\);\s*\n\s*\n",
+    r"const closeNotifBtn\s*=\s*document\.getElementById\('closeNotifBtn'\);[\s\S]*?\n\s*\}\);\s*\n",
+]
 
 
 def _cut_block(source, start, params_from):
-    """Вырезает блок от start до закрывающей скобки тела."""
     i = params_from
     depth = 1
     while i < len(source) and depth > 0:
@@ -71,13 +77,12 @@ def cut_window_function(source, name):
 
 def cut_const(source, name):
     pattern = r"^[ \t]*const\s+" + re.escape(name) + r"\s*=[^\n]*\r?\n"
-    new_source, count = re.subn(pattern, "", source, count=1, flags=re.M)
-    return new_source, count > 0
+    return re.subn(pattern, "", source, count=1, flags=re.M)
 
 
 def main():
     with open(PATH, encoding="utf-8") as handle:
-        source = handle.read()
+        source = handle.read().replace("\r\n", "\n")
 
     removed = []
     for name in FUNCTIONS:
@@ -87,15 +92,20 @@ def main():
         source, ok = cut_window_function(source, name)
         removed.append(("window." + name, ok))
     for name in CONSTS:
-        source, ok = cut_const(source, name)
-        removed.append(("const " + name, ok))
+        new_source, count = cut_const(source, name)
+        source = new_source
+        removed.append(("const " + name, count > 0))
+    for pattern in SNIPPET_PATTERNS:
+        new_source, count = re.subn(pattern, "", source, count=1)
+        source = new_source
+        removed.append(("фрагмент " + pattern[:32], count > 0))
 
     missing = [name for name, ok in removed if not ok]
     if missing:
         print("НЕ НАЙДЕНЫ: " + ", ".join(missing), file=sys.stderr)
         return 1
 
-    marker = "import { extractTags } from '../entities/post/model.js';\n"
+    marker = "import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';\n"
     if marker not in source:
         print("Не найден блок импортов", file=sys.stderr)
         return 1
