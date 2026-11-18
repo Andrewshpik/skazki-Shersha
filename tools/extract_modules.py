@@ -9,23 +9,21 @@ import sys
 
 PATH = "src/app/main.js"
 
-IMPORTS = """import { filterPosts } from '../features/search/index.js';
+IMPORTS = """import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';
 """
 
 FUNCTIONS = [
-    "onSearchInput",
-    "filterPosts",
-    "updateSearchStatus",
-    "highlightInCard",
-    "clearHighlight",
-    "highlightNode",
+    "tagHash",
+    "syncTagFromHash",
 ]
 
-WINDOW_FUNCTIONS = []
+WINDOW_FUNCTIONS = ["applyTagFilter", "filterByTag", "clearTagFilter"]
 
-CONSTS = ["searchTimer"]
+CONSTS = ["TAG_PREFIX", "activeTag"]
 
-SNIPPET_PATTERNS = []
+SNIPPET_PATTERNS = [
+    r"window\.addEventListener\('hashchange', syncTagFromHash\);\s*\n\s*window\.addEventListener\('load', syncTagFromHash\);\s*\n\s*setTimeout\(syncTagFromHash, 2000\);\s*\n\s*\n",
+]
 
 
 def _cut_block(source, start, params_from):
@@ -100,7 +98,7 @@ def main():
         print("НЕ НАЙДЕНЫ: " + ", ".join(missing), file=sys.stderr)
         return 1
 
-    marker = "import { updateBell, initNotifications } from '../widgets/notifications/index.js';\n"
+    marker = "import { filterPosts } from '../features/search/index.js';\n"
     if marker not in source:
         print("Не найден блок импортов", file=sys.stderr)
         return 1

@@ -9,6 +9,7 @@ import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
 import { trackView } from '../features/page-view/index.js';
 import { updateBell, initNotifications } from '../widgets/notifications/index.js';
 import { filterPosts } from '../features/search/index.js';
+import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -22,7 +23,6 @@ import { filterPosts } from '../features/search/index.js';
         window.__getUser = () => userData;
 
         // Извлечение тегов вида #тег из текста
-        let activeTag = null; // активный фильтр по тегу
 
         async function loadPosts() {
             // Показываем скелетон только если нет кеша (первый заход)
@@ -903,6 +903,7 @@ function renderPosts() {
             let shown = 0;
             posts.slice(0, limit).forEach((post, index) => {
                 // фильтр по активному тегу
+                const activeTag = getActiveTag();
                 if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
                 // фильтр «только мои истории»
                 if (myOnly && post.author !== userData.name) return;
@@ -1000,61 +1001,6 @@ function renderPosts() {
 // Подсветка совпадений в заголовке, тексте, авторе и тегах
 // Фильтр по тегу (клик по #тег)
         // Тег как адрес: #tag/зима — ссылку можно отправить или добавить в закладки
-        const TAG_PREFIX = '#tag/';
-
-        function tagHash(tag) {
-            return TAG_PREFIX + encodeURIComponent(tag);
-        }
-
-        window.applyTagFilter = function(tag, opts) {
-            activeTag = tag || null;
-            const banner = document.getElementById('tagBanner');
-            const text = document.getElementById('tagBannerText');
-            if (activeTag) {
-                if (banner && text) {
-                    text.textContent = 'Тег: #' + activeTag;
-                    banner.style.display = 'flex';
-                }
-                document.title = '#' + activeTag + ' — Сказки Шерша';
-            } else {
-                if (banner) banner.style.display = 'none';
-                document.title = 'Сказки Шерша';
-            }
-            renderPosts();
-            if (!(opts && opts.silent)) {
-                showToast(activeTag ? 'Показаны истории с тегом #' + activeTag : 'Фильтр по тегу снят');
-            }
-        };
-
-        window.filterByTag = function(tag) {
-            if (activeTag === tag) {
-                window.clearTagFilter();
-                return;
-            }
-            try { history.replaceState(null, '', tagHash(tag)); } catch (e) { location.hash = tagHash(tag); }
-            window.applyTagFilter(tag);
-            if (typeof collapseTagsCloud === 'function') collapseTagsCloud();
-        };
-
-        window.clearTagFilter = function() {
-            try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; }
-            window.applyTagFilter(null);
-        };
-
-        function syncTagFromHash() {
-            const match = (location.hash || '').match(/^#tag\/(.+)$/);
-            if (match) {
-                let tag = match[1];
-                try { tag = decodeURIComponent(tag); } catch (e) { /* оставляем как есть */ }
-                if (tag !== activeTag) window.applyTagFilter(tag, { silent: true });
-            } else if (activeTag) {
-                window.applyTagFilter(null, { silent: true });
-            }
-        }
-
-        window.addEventListener('hashchange', syncTagFromHash);
-        window.addEventListener('load', syncTagFromHash);
-        setTimeout(syncTagFromHash, 2000);
 
         function collapseTagsCloud() {
             const cloud = document.getElementById('allTagsCloud');
@@ -1081,7 +1027,7 @@ function renderPosts() {
                 cloud.innerHTML = '<span style="opacity:.7">Пока нет ни одного тега.</span>';
             } else {
                 cloud.innerHTML = sorted.map(t =>
-                    `<span class="hint-tag${activeTag === t ? ' active' : ''}" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)} <small>(${counts[t]})</small></span>`
+                    `<span class="hint-tag${getActiveTag() === t ? ' active' : ''}" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)} <small>(${counts[t]})</small></span>`
                 ).join('');
             }
             cloud.style.display = 'block';
@@ -1940,6 +1886,7 @@ window.copyPostLink = function(id) {
         // а внутри ES-модуля они не попадают в глобальную область сами по себе.
         setToastHandler(showToast);
         initNotifications();
+        initTagFilter({ render: renderPosts, toast: showToast, collapseCloud: collapseTagsCloud });
         Object.assign(window, {
             closeImageModal,
             insertHint,
