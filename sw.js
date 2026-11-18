@@ -1,12 +1,13 @@
 // Service Worker для «Сказок Шерша»
 // Кэширует статические файлы (оболочку сайта) для быстрой загрузки и офлайн-режима.
-const CACHE = 'shersha-cache-v25';
+const CACHE = 'shersha-cache-v26';
+const OFFLINE_CACHE = 'shersh-offline-v1';
 const ASSETS = [
   './',
   './index.html',
   './shersh_cursor.png',
-  './styles.css?v=12',
-  './app.js?v=16',
+  './styles.css?v=13',
+  './app.js?v=17',
   './tale.js?v=4',
   './player.js?v=6',
   './admin.css',
@@ -22,7 +23,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== OFFLINE_CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
   );
 });
 
@@ -42,13 +43,19 @@ self.addEventListener('fetch', (e) => {
 
   if (isCode) {
     e.respondWith(
-      fetch(e.request, { cache: 'no-store' })
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-          return res;
+      caches.open(OFFLINE_CACHE)
+        .then((saved) => saved.match(e.request))
+        .then((savedCopy) => {
+          // Сохранённое вручную читается без интернета в первую очередь
+          if (savedCopy) return savedCopy;
+          return fetch(e.request, { cache: 'no-store' })
+            .then((res) => {
+              const copy = res.clone();
+              caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+              return res;
+            })
+            .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')));
         })
-        .catch(() => caches.match(e.request).then((r) => r || caches.match('./index.html')))
     );
     return;
   }

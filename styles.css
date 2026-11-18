@@ -564,6 +564,7 @@
         .audio-status {
             margin-top: 6px; font-size: 0.85rem; color: var(--gold-accent);
         }
+        .offline-btn.is-saved { color: var(--gold-accent); font-weight: 600; }
         .audio-bar__now {
             font-size: 0.82rem; line-height: 1.35; opacity: 0.8; margin-bottom: 8px;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

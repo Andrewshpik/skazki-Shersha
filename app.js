@@ -1090,6 +1090,9 @@
                         <button class="action-btn" onclick="speakPost(${index})" title="${post.audio ? 'Слушать озвучку автора' : 'Слушать сказку'}" aria-label="Слушать сказку">
                             ${post.audio ? '🎧 Слушать запись' : '🔊 Слушать'}
                         </button>
+                        <button class="action-btn offline-btn" data-post="${post.id}" onclick="toggleOffline(${post.id})" title="Сохранить сказку для чтения без интернета" aria-label="Сохранить для чтения без интернета">
+                            📥 Офлайн
+                        </button>
                         ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться" aria-label="Пожаловаться на историю">🚩</button>` : ''}
                     </div>
                 `;
@@ -1110,6 +1113,8 @@
             // после перерисовки ленты сохраняем активный поиск
             const searchEl = document.getElementById('searchInput');
             if (searchEl && searchEl.value.trim()) filterPosts(true);
+
+            refreshOfflineButtons();
         }
 
         let searchTimer = null;
@@ -1348,6 +1353,56 @@
         }
 
         // Копировать ссылку на конкретный пост
+        // Офлайн-чтение: сохраняем страницу истории в отдельный кеш браузера
+        const OFFLINE_CACHE = 'shersh-offline-v1';
+
+        function postPageUrl(id) {
+            const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+            return base + 'post-' + id + '.html';
+        }
+
+        async function isSavedOffline(id) {
+            if (!('caches' in window)) return false;
+            try {
+                const cache = await caches.open(OFFLINE_CACHE);
+                return !!(await cache.match(postPageUrl(id)));
+            } catch (e) { return false; }
+        }
+
+        async function refreshOfflineButtons() {
+            const buttons = document.querySelectorAll('.offline-btn');
+            for (const btn of buttons) {
+                const saved = await isSavedOffline(btn.dataset.post);
+                btn.textContent = saved ? '✓ Офлайн' : '📥 Офлайн';
+                btn.classList.toggle('is-saved', saved);
+                btn.title = saved ? 'Сказка сохранена — откроется без интернета' : 'Сохранить сказку для чтения без интернета';
+            }
+        }
+
+        window.toggleOffline = async function(id) {
+            if (!('caches' in window)) {
+                showToast('Браузер не умеет сохранять офлайн', true);
+                return;
+            }
+            const url = postPageUrl(id);
+            try {
+                const cache = await caches.open(OFFLINE_CACHE);
+                const saved = await cache.match(url);
+                if (saved) {
+                    await cache.delete(url);
+                    showToast('Сохранённая копия удалена');
+                } else {
+                    const response = await fetch(url, { cache: 'no-store' });
+                    if (!response.ok) throw new Error('Страница истории ещё не собрана — попробуйте позже');
+                    await cache.put(url, response.clone());
+                    showToast('Сказка сохранена — откроется без интернета');
+                }
+                await refreshOfflineButtons();
+            } catch (e) {
+                showToast(e.message || 'Не удалось сохранить', true);
+            }
+        };
+
         window.copyPostLink = function(id) {
             const base = location.origin + location.pathname.replace(/[^/]*$/, '');
             const url = base + 'post-' + id + '.html';
