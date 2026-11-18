@@ -1,36 +1,31 @@
 """Этап 2: вынос блоков из src/app/main.js в модули.
 
-Ищет объявления по имени (function NAME, window.NAME = function, const NAME),
+Ищет объявления по имени (function NAME, window.NAME = function, const/let NAME),
 вырезает их с балансировкой скобок, удаляет заданные фрагменты и добавляет импорты.
-Скрипт одноразовый: после успешного запуска список трогать не нужно.
+Списки ниже меняются под каждую итерацию.
 """
 import re
 import sys
 
 PATH = "src/app/main.js"
 
-IMPORTS = """import { trackView } from '../features/page-view/index.js';
-import { updateBell, initNotifications } from '../widgets/notifications/index.js';
+IMPORTS = """import { filterPosts } from '../features/search/index.js';
 """
 
 FUNCTIONS = [
-    "trackView",
-    "notifSeenAt",
-    "seenLikes",
-    "buildNotifications",
-    "updateBell",
-    "markNotificationsRead",
-    "renderNotifications",
+    "onSearchInput",
+    "filterPosts",
+    "updateSearchStatus",
+    "highlightInCard",
+    "clearHighlight",
+    "highlightNode",
 ]
 
-WINDOW_FUNCTIONS = ["openNotification"]
+WINDOW_FUNCTIONS = []
 
-CONSTS = ["VIEWS_KEY", "NOTIF_KEY", "NOTIF_LIKES_KEY"]
+CONSTS = ["searchTimer"]
 
-SNIPPET_PATTERNS = [
-    r"document\.getElementById\('bellBtn'\)\.addEventListener\('click',\s*\(\)\s*=>\s*\{[\s\S]*?\n\s*\}\);\s*\n\s*\n",
-    r"const closeNotifBtn\s*=\s*document\.getElementById\('closeNotifBtn'\);[\s\S]*?\n\s*\}\);\s*\n",
-]
+SNIPPET_PATTERNS = []
 
 
 def _cut_block(source, start, params_from):
@@ -76,7 +71,7 @@ def cut_window_function(source, name):
 
 
 def cut_const(source, name):
-    pattern = r"^[ \t]*const\s+" + re.escape(name) + r"\s*=[^\n]*\r?\n"
+    pattern = r"^[ \t]*(const|let)\s+" + re.escape(name) + r"\s*=[^\n]*\n"
     return re.subn(pattern, "", source, count=1, flags=re.M)
 
 
@@ -94,7 +89,7 @@ def main():
     for name in CONSTS:
         new_source, count = cut_const(source, name)
         source = new_source
-        removed.append(("const " + name, count > 0))
+        removed.append(("const/let " + name, count > 0))
     for pattern in SNIPPET_PATTERNS:
         new_source, count = re.subn(pattern, "", source, count=1)
         source = new_source
@@ -105,7 +100,7 @@ def main():
         print("НЕ НАЙДЕНЫ: " + ", ".join(missing), file=sys.stderr)
         return 1
 
-    marker = "import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';\n"
+    marker = "import { updateBell, initNotifications } from '../widgets/notifications/index.js';\n"
     if marker not in source:
         print("Не найден блок импортов", file=sys.stderr)
         return 1

@@ -8,6 +8,7 @@ import { setToastHandler, refreshOfflineButtons } from '../features/offline-save
 import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
 import { trackView } from '../features/page-view/index.js';
 import { updateBell, initNotifications } from '../widgets/notifications/index.js';
+import { filterPosts } from '../features/search/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -996,92 +997,8 @@ function renderPosts() {
             renderTaleOfDay();
         }
 
-        let searchTimer = null;
-        function onSearchInput() {
-            clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => filterPosts(true), 250);
-        }
-
-        function filterPosts(allowHighlight) {
-            const raw = document.getElementById('searchInput').value.trim();
-            const query = normalizeForSearch(raw);
-            const postCards = document.querySelectorAll('.post-card');
-            let visible = 0;
-            postCards.forEach(card => {
-                const haystack = normalizeForSearch([
-                    card.dataset.title,
-                    card.dataset.text,
-                    card.dataset.author,
-                    card.dataset.tags
-                ].join(' '));
-                const match = !query || haystack.includes(query);
-                card.style.display = match ? 'block' : 'none';
-                if (match) visible++;
-                if (allowHighlight) highlightInCard(card, raw);
-            });
-            updateSearchStatus(query ? visible : null, raw);
-        }
-
-        function updateSearchStatus(count, raw) {
-            let el = document.getElementById('searchStatus');
-            if (!el) {
-                el = document.createElement('div');
-                el.id = 'searchStatus';
-                el.className = 'search-status';
-                const bar = document.getElementById('searchContainer');
-                if (bar) bar.appendChild(el);
-            }
-            if (count === null) { el.textContent = ''; el.style.display = 'none'; return; }
-            el.style.display = 'block';
-            el.textContent = count > 0
-                ? `Найдено историй: ${count} по запросу «${raw}»`
-                : `По запросу «${raw}» ничего не найдено`;
-        }
-
-        // Подсветка совпадений в заголовке, тексте, авторе и тегах
-        function highlightInCard(card, raw) {
-            const q = String(raw || '').trim();
-            const targets = card.querySelectorAll('h2, .post-content, .author-name, .hint-tag');
-            targets.forEach(node => {
-                clearHighlight(node);
-                if (!q || q.length < 2) return;
-                highlightNode(node, q);
-            });
-        }
-
-        function clearHighlight(node) {
-            node.querySelectorAll('mark').forEach(m => {
-                m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
-            });
-            if (node.parentNode) node.parentNode.normalize();
-        }
-
-        function highlightNode(node, q) {
-            const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-            const textNodes = [];
-            let n;
-            while ((n = walker.nextNode())) textNodes.push(n);
-            const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-            textNodes.forEach(tn => {
-                const text = tn.nodeValue;
-                if (!re.test(text)) return;
-                re.lastIndex = 0;
-                const frag = document.createDocumentFragment();
-                let last = 0, m;
-                while ((m = re.exec(text)) !== null) {
-                    frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-                    const mark = document.createElement('mark');
-                    mark.className = 'search-hit';
-                    mark.textContent = m[0];
-                    frag.appendChild(mark);
-                    last = m.index + m[0].length;
-                }
-                frag.appendChild(document.createTextNode(text.slice(last)));
-                tn.parentNode.replaceChild(frag, tn);
-            });
-        }
-
-        // Фильтр по тегу (клик по #тег)
+// Подсветка совпадений в заголовке, тексте, авторе и тегах
+// Фильтр по тегу (клик по #тег)
         // Тег как адрес: #tag/зима — ссылку можно отправить или добавить в закладки
         const TAG_PREFIX = '#tag/';
 
@@ -2026,7 +1943,6 @@ window.copyPostLink = function(id) {
         Object.assign(window, {
             closeImageModal,
             insertHint,
-            onSearchInput,
             showPage,
             switchAuthTab,
             togglePasswordVisibility,
