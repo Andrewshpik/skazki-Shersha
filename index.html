@@ -22,7 +22,7 @@
     <meta name="twitter:image" content="https://andrewshpik.github.io/skazki-Shersha/banner.jpg">
     <meta name="theme-color" content="#FFD700">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=15">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -210,6 +210,7 @@
             <button class="btn btn-soft" onclick="randomTale()">🌙 Случайная сказка на ночь</button>
             <button class="btn btn-soft" id="allTagsBtn" onclick="toggleAllTags()">🏷 Показать все теги</button>
             <button class="btn btn-soft" id="myOnlyBtn" onclick="toggleMyOnly()">📖 Только мои истории</button>
+            <button class="btn btn-soft" id="myAuthorsBtn" onclick="toggleMyAuthors()">❤️ Мои авторы</button>
         </div>
         <div id="allTagsCloud" class="all-tags-cloud" style="display:none;"></div>
         <div id="tagBanner" class="tag-banner" style="display:none;">
@@ -283,6 +284,7 @@
                     <span>👍 Лайков: <b id="otherStatLikes">0</b></span>
                 </div>
                 <div style="margin-top: 12px;">
+                    <button class="btn btn-soft" id="subscribeBtn" style="display: none;" onclick="toggleSubscribeCurrent()">➕ Подписаться</button>
                     <button class="btn btn-delete" id="banUserBtn" style="display: none;" onclick="banUser()">🚫 Забанить</button>
                 </div>
             </div>
@@ -386,7 +388,7 @@
     <script src="tale.js?v=4"></script>
     <script src="player.js?v=6"></script>
 
-    <script src="app.js?v=18"></script>
+    <script src="app.js?v=19"></script>
 
     <!-- Кнопка «Наверх» -->
     <button id="backToTop" title="Наверх" aria-label="Наверх" style="display:none; position:fixed; bottom:20px; left:20px; z-index:1500; width:46px; height:46px; border-radius:50%; border:none; background:var(--gold-accent); color:#333; font-size:1.4rem; cursor:pointer; box-shadow:var(--shadow); transition:transform 0.2s;">↑</button>

@@ -565,6 +565,7 @@
             margin-top: 6px; font-size: 0.85rem; color: var(--gold-accent);
         }
         .offline-btn.is-saved { color: var(--gold-accent); font-weight: 600; }
+        #subscribeBtn.is-subscribed { background: var(--gold-accent); color: #2c3e50; }
 
         /* Сказка дня */
         .tale-of-day {

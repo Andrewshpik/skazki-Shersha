@@ -402,7 +402,7 @@
         function persistUser() {
             localStorage.setItem('shersh_user', JSON.stringify(userData));
             updateHeaderUI(); updateProfileUI();
-            if (userData.name && !userData.isGuest) updateLikedSet();
+            if (userData.name && !userData.isGuest) { updateLikedSet(); loadSubscriptions(); }
         }
 
         const loginModal = document.getElementById('loginModal');
@@ -665,6 +665,7 @@
 
             // Кнопка бана видна только админу и не для самого себя
             window.__currentProfileName = authorName;
+            updateSubscribeUI();
             const banBtn = document.getElementById('banUserBtn');
             if (userData.is_admin && authorName !== userData.name) {
                 banBtn.style.display = 'inline-block';
@@ -984,6 +985,8 @@
         let postsPerPage = 5;      // сколько постов показывать за раз
         let visibleCount = postsPerPage;
         let myOnly = false;        // фильтр «только мои истории»
+        let myAuthorsOnly = false; // фильтр «только мои авторы»
+        let myAuthors = new Set(); // на кого подписан пользователь
 
         function showMorePosts() {
             visibleCount += postsPerPage;
@@ -1028,6 +1031,7 @@
                 if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
                 // фильтр «только мои истории»
                 if (myOnly && post.author !== userData.name) return;
+                if (myAuthorsOnly && !myAuthors.has(post.author)) return;
                 shown++;
                 const postElement = document.createElement('article');
                 postElement.className = 'post-card';
@@ -1335,8 +1339,7 @@
         };
 
         // Только мои истории
-        window.toggleMyOnly = function() {
-            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы отфильтровать свои истории', true); return; }
+        window.toggleMyOnly = function() {            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы отфильтровать свои истории', true); return; }
             myOnly = !myOnly;
             const btn = document.getElementById('myOnlyBtn');
             if (btn) {
@@ -1344,6 +1347,69 @@
                 btn.style.borderColor = myOnly ? 'var(--gold-accent)' : 'var(--border-color)';
             }
             renderPosts();
+        };
+
+        // Подписки на авторов
+        async function loadSubscriptions() {
+            if (!userData.name || userData.isGuest) { myAuthors = new Set(); return; }
+            try {
+                const data = await api('/api/subscriptions');
+                myAuthors = new Set((data && data.authors) || []);
+            } catch (e) { myAuthors = new Set(); }
+            updateSubscribeUI();
+        }
+
+        function updateSubscribeUI() {
+            const btn = document.getElementById('subscribeBtn');
+            if (btn) {
+                const name = window.__currentProfileName;
+                const visible = !!name && name !== userData.name && !!userData.name && !userData.isGuest;
+                btn.style.display = visible ? 'inline-block' : 'none';
+                if (visible) {
+                    const subscribed = myAuthors.has(name);
+                    btn.textContent = subscribed ? '✅ Вы подписаны' : '➕ Подписаться';
+                    btn.classList.toggle('is-subscribed', subscribed);
+                }
+            }
+            const feedBtn = document.getElementById('myAuthorsBtn');
+            if (feedBtn) {
+                const count = myAuthors.size;
+                feedBtn.textContent = myAuthorsOnly
+                    ? '❤️ Показать все истории'
+                    : '❤️ Мои авторы' + (count ? ' (' + count + ')' : '');
+                feedBtn.style.borderColor = myAuthorsOnly ? 'var(--gold-accent)' : 'var(--border-color)';
+            }
+        }
+
+        window.toggleMyAuthors = async function() {
+            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы видеть своих авторов', true); return; }
+            if (!myAuthors.size) {
+                showToast('Вы пока ни на кого не подписаны — откройте профиль автора и нажмите «Подписаться»');
+                return;
+            }
+            myAuthorsOnly = !myAuthorsOnly;
+            updateSubscribeUI();
+            renderPosts();
+        };
+
+        window.toggleSubscribe = async function(name) {
+            if (!userData.name || userData.isGuest) { showToast('Войди, чтобы подписаться', true); return; }
+            if (!name) return;
+            try {
+                const data = await api('/api/subscribe', { method: 'POST', body: JSON.stringify({ author: name }) });
+                if (data && data.subscribed) {
+                    myAuthors.add(name);
+                    showToast('Вы подписаны на ' + name);
+                } else {
+                    myAuthors.delete(name);
+                    showToast('Вы отписались от ' + name);
+                }
+                updateSubscribeUI();
+            } catch (e) { showToast(e.message, true); }
+        };
+
+        window.toggleSubscribeCurrent = function() {
+            window.toggleSubscribe(window.__currentProfileName);
         };
 
         // Время чтения (~180 слов в минуту)
@@ -2258,6 +2324,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             const b = document.getElementById('backToTop');
             if (b) b.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+            if (userData.name && !userData.isGuest) loadSubscriptions();
         });
 
         // --- Фокус-ловушка: Tab не уходит из открытой модалки ---

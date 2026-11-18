@@ -1272,6 +1272,46 @@ def admin_overview():
     })
 
 
+# --- Подписки на авторов ---
+@app.route("/api/subscriptions", methods=["GET"])
+def list_subscriptions():
+    """Список авторов, на которых подписан текущий пользователь."""
+    user = auth_user()
+    if not user:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    try:
+        rows = db_select("subscriptions", params={"select": "author", "follower": f"eq.{user}"})
+    except Exception:
+        rows = []
+    return jsonify({"authors": [r.get("author") for r in rows if r.get("author")]})
+
+
+@app.route("/api/subscribe", methods=["POST"])
+@rate_limit(limit=40, window=60)  # не больше 40 подписок/отписок в минуту
+def toggle_subscription():
+    """Подписывает или отписывает текущего пользователя от автора."""
+    user = auth_user()
+    if not user:
+        return jsonify({"error": "Требуется вход в аккаунт"}), 401
+    if _is_banned(user):
+        return jsonify({"error": "Аккаунт заблокирован модератором"}), 403
+    data = request.json or {}
+    author = (data.get("author") or "").strip()
+    if not author:
+        return jsonify({"error": "Не указан автор"}), 400
+    if author == user:
+        return jsonify({"error": "На себя подписаться нельзя"}), 400
+
+    existing = db_select("subscriptions", params={
+        "select": "id", "follower": f"eq.{user}", "author": f"eq.{author}",
+    })
+    if existing:
+        db_delete("subscriptions", "id", existing[0]["id"])
+        return jsonify({"status": "unsubscribed", "subscribed": False})
+    db_insert("subscriptions", {"follower": user, "author": author})
+    return jsonify({"status": "subscribed", "subscribed": True})
+
+
 @app.route("/api/admin/stats", methods=["GET"])
 def admin_stats():
     """Сводка для аналитики: итоги, топ историй и авторов, динамика за 14 дней."""
