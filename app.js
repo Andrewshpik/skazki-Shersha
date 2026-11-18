@@ -1349,7 +1349,8 @@
 
         // Копировать ссылку на конкретный пост
         window.copyPostLink = function(id) {
-            const url = location.origin + location.pathname + '#post-' + id;
+            const base = location.origin + location.pathname.replace(/[^/]*$/, '');
+            const url = base + 'post-' + id + '.html';
             navigator.clipboard.writeText(url)
                 .then(() => showToast('Ссылка на пост скопирована'))
                 .catch(() => showToast('Не удалось скопировать', true));
