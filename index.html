@@ -22,7 +22,7 @@
     <meta name="twitter:image" content="https://andrewshpik.github.io/skazki-Shersha/banner.jpg">
     <meta name="theme-color" content="#FFD700">
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=14">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -205,6 +205,7 @@
     </header>
 
     <main id="feed-page">
+        <section class="tale-of-day" id="taleOfDay" style="display:none;" aria-label="Сказка дня"></section>
         <div class="feed-tools">
             <button class="btn btn-soft" onclick="randomTale()">🌙 Случайная сказка на ночь</button>
             <button class="btn btn-soft" id="allTagsBtn" onclick="toggleAllTags()">🏷 Показать все теги</button>
@@ -385,7 +386,7 @@
     <script src="tale.js?v=4"></script>
     <script src="player.js?v=6"></script>
 
-    <script src="app.js?v=17"></script>
+    <script src="app.js?v=18"></script>
 
     <!-- Кнопка «Наверх» -->
     <button id="backToTop" title="Наверх" aria-label="Наверх" style="display:none; position:fixed; bottom:20px; left:20px; z-index:1500; width:46px; height:46px; border-radius:50%; border:none; background:var(--gold-accent); color:#333; font-size:1.4rem; cursor:pointer; box-shadow:var(--shadow); transition:transform 0.2s;">↑</button>
