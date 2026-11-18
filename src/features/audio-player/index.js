@@ -1,5 +1,7 @@
 // Плеер сказок: озвучка текста голосами браузера (Web Speech API).
 // Своего сервера не требует, аудио никуда не загружается.
+import { getPosts, getCurrentPostIndex } from '../../shared/state.js';
+
 (function () {
     'use strict';
 
@@ -434,7 +436,7 @@
     window.speechPlayer = { speak, stop, hide, playFile, get supported() { return supported; } };
 
     window.speakPost = function (index) {
-        const post = (typeof posts !== 'undefined' && posts) ? posts[index] : null;
+        const post = getPosts()[index] || null;
         if (!post) return;
         if (post.audio) {
             playFile(post.audio, post.title || 'Запись автора', 'post-audio-' + post.id);
@@ -451,8 +453,9 @@
     };
 
     window.speakCurrentPost = function () {
-        if (typeof currentPostIndexForComments === 'undefined' || currentPostIndexForComments === null) return;
-        window.speakPost(currentPostIndexForComments);
+        const index = getCurrentPostIndex();
+        if (index === null || index === undefined) return;
+        window.speakPost(index);
     };
 
     if (supported) {

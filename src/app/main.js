@@ -119,6 +119,11 @@
         let usersMap = {}; // name -> profile (для аватаров/ников)
         const POSTS_CACHE_KEY = 'shersh_posts_cache';
 
+        // Аксессоры состояния для модулей (их читает src/shared/state.js)
+        window.__getPosts = () => posts;
+        window.__getCurrentPostIndex = () => currentPostIndexForComments;
+        window.__getUser = () => userData;
+
         // Извлечение тегов вида #тег из текста
         function extractTags(text) {
             const matches = String(text || '').match(/#([\wа-яёА-ЯЁ]+)/g) || [];
@@ -2357,4 +2362,16 @@
                 e.preventDefault();
                 first.focus();
             }
+        });
+
+        // Слой совместимости: разметка зовёт функции через inline-обработчики,
+        // а внутри ES-модуля они не попадают в глобальную область сами по себе.
+        Object.assign(window, {
+            closeImageModal,
+            insertHint,
+            onSearchInput,
+            showPage,
+            switchAuthTab,
+            togglePasswordVisibility,
+            updateWordCount,
         });
