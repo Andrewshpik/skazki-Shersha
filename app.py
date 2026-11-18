@@ -1281,10 +1281,8 @@ def list_subscriptions():
         return jsonify({"error": "Требуется вход в аккаунт"}), 401
     try:
         rows = db_select("subscriptions", params={"select": "author", "follower": f"eq.{user}"})
-    except Exception as error:
-        response = getattr(error, "response", None)
-        detail = (" | " + response.text[:200]) if response is not None else ""
-        return jsonify({"error": "Подписки недоступны: " + str(error)[:160] + detail}), 500
+    except Exception:
+        return jsonify({"error": "Подписки временно недоступны"}), 500
     return jsonify({"authors": [r.get("author") for r in rows if r.get("author")]})
 
 
@@ -1308,8 +1306,8 @@ def toggle_subscription():
         existing = db_select("subscriptions", params={
             "select": "id", "follower": f"eq.{user}", "author": f"eq.{author}",
         })
-    except Exception as error:
-        return jsonify({"error": "Подписки недоступны: " + str(error)[:200]}), 500
+    except Exception:
+        return jsonify({"error": "Подписки временно недоступны"}), 500
     if existing:
         db_delete("subscriptions", "id", existing[0]["id"])
         return jsonify({"status": "unsubscribed", "subscribed": False})
