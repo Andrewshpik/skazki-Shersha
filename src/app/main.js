@@ -1,123 +1,17 @@
-// --- НАСТРОЙКИ API (бэкенд на Netrun) ---
-        const API_BASE = 'https://shersh-auth.de1.netrun.io';
-
-        // --- Токен входа: сервер верит только ему, не имени в запросе ---
-        const TOKEN_KEY = 'shersh_token';
-
-        function getToken() {
-            try { return localStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; }
-        }
-
-        function setToken(token) {
-            if (!token) return;
-            try { localStorage.setItem(TOKEN_KEY, token); } catch (e) { /* приватный режим */ }
-        }
-
-        function clearToken() {
-            try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* приватный режим */ }
-        }
-
-        function clearSession() {
-            try { localStorage.removeItem("shersh_user"); } catch (e) { /* приватный режим */ }
-            clearToken();
-        }
-
-        function escapeHTML(str) {
-            return String(str == null ? '' : str)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        }
+// Точка входа приложения. Общие утилиты и клиент API живут в shared.
+import { API_BASE, TOKEN_KEY, POSTS_CACHE_KEY, MAX_UPLOAD_BYTES } from '../shared/config.js';
+import { api, getToken, setToken, clearToken, clearSession } from '../shared/lib/api.js';
+import { escapeHTML, formatDate, readingTime, normalizeForSearch } from '../shared/lib/format.js';
+import { validateImageFile, compressImage, uploadImage } from '../shared/lib/images.js';
+import { extractTags } from '../entities/post/model.js';
+import { setToastHandler, refreshOfflineButtons } from '../features/offline-save/index.js';
+import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
-        const MAX_UPLOAD_BYTES = 12 * 1024 * 1024; // 12 МБ — до сжатия
-
-        function validateImageFile(file) {
-            if (!file) return 'Файл не выбран';
-            if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type || '')) {
-                return 'Можно загрузить только JPG, PNG, WEBP или GIF';
-            }
-            if (file.size > MAX_UPLOAD_BYTES) {
-                return `Файл слишком большой (${(file.size / 1048576).toFixed(1)} МБ). Максимум 12 МБ`;
-            }
-            return null;
-        }
-
-        function compressImage(file, maxWidth = 1280, quality = 0.7) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const scale = Math.min(1, maxWidth / img.width);
-                        const w = Math.round(img.width * scale);
-                        const h = Math.round(img.height * scale);
-                        const canvas = document.createElement('canvas');
-                        canvas.width = w; canvas.height = h;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, w, h);
-                        resolve(canvas.toDataURL('image/jpeg', quality));
-                    };
-                    img.onerror = () => reject(new Error('Не удалось прочитать изображение'));
-                    img.src = e.target.result;
-                };
-                reader.onerror = () => reject(new Error('Ошибка чтения файла'));
-                reader.readAsDataURL(file);
-            });
-        }
 
         // Загрузка base64-изображения на сервер, возвращает URL в Storage
-        async function uploadImage(base64Data) {
-            const data = await api('/api/upload', {
-                method: 'POST',
-                body: JSON.stringify({ image: base64Data })
-            });
-            return data.url;
-        }
-
-        async function api(path, options = {}) {
-            const attempts = 3;
-            let lastErr = null;
-            for (let i = 0; i < attempts; i++) {
-                try {
-                const res = await fetch(API_BASE + path, {
-                    ...options,
-                    headers: Object.assign(
-                        { 'Content-Type': 'application/json' },
-                        getToken() ? { Authorization: 'Bearer ' + getToken() } : {},
-                        (options && options.headers) || {}
-                    )
-                });
-                    const data = await res.json().catch(() => ({}));
-                if (res.status === 401) {
-                    // токен истёк или сессия устарела — просим войти заново
-                    clearSession();
-                }
-                    if (!res.ok) {
-                        // 5xx — сервер просыпается, пробуем ещё; 4xx — повторять бессмысленно
-                        if (res.status >= 500 && i < attempts - 1) {
-                            lastErr = new Error(data.error || ('Ошибка ' + res.status));
-                            await new Promise(r => setTimeout(r, 800 * (i + 1)));
-                            continue;
-                        }
-                        throw new Error(data.error || ('Ошибка ' + res.status));
-                    }
-                    return data;
-                } catch (e) {
-                    lastErr = e;
-                    const isNet = /fetch|network|Failed|соединени|Соединени|таймаут|timeout/i.test(e.message || '');
-                    if (i < attempts - 1 && (isNet || /Ошибка 5\d\d/.test(e.message || ''))) {
-                        await new Promise(r => setTimeout(r, 800 * (i + 1)));
-                        continue;
-                    }
-                    throw e;
-                }
-            }
-            throw lastErr || new Error('Сеть недоступна');
-        }
-
         let posts = [];
         let usersMap = {}; // name -> profile (для аватаров/ников)
-        const POSTS_CACHE_KEY = 'shersh_posts_cache';
 
         // Аксессоры состояния для модулей (их читает src/shared/state.js)
         window.__getPosts = () => posts;
@@ -125,12 +19,6 @@
         window.__getUser = () => userData;
 
         // Извлечение тегов вида #тег из текста
-        function extractTags(text) {
-            const matches = String(text || '').match(/#([\wа-яёА-ЯЁ]+)/g) || [];
-            const tags = [...new Set(matches.map(m => m.slice(1).toLowerCase()))];
-            return tags.slice(0, 6);
-        }
-
         let activeTag = null; // активный фильтр по тегу
 
         async function loadPosts() {
@@ -970,13 +858,6 @@
             return ` <span class="new-comments-badge" title="Новые комментарии с прошлого просмотра">+${diff}</span>`;
         }
 
-        function formatDate(dateString) {
-            const date = new Date(dateString);
-            const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-            const hh = String(date.getHours()).padStart(2, '0'); const mm = String(date.getMinutes()).padStart(2, '0');
-            return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()} в ${hh}:${mm}`;
-        }
-
         const postsContainer = document.getElementById('posts-container');
 
         function showFeedSkeleton() {
@@ -1131,10 +1012,6 @@
         function onSearchInput() {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(() => filterPosts(true), 250);
-        }
-
-        function normalizeForSearch(s) {
-            return String(s || '').toLowerCase().replace(/ё/g, 'е');
         }
 
         function filterPosts(allowHighlight) {
@@ -1418,98 +1295,11 @@
         };
 
         // Время чтения (~180 слов в минуту)
-        function readingTime(text) {
-            const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
-            const min = Math.max(1, Math.round(words / 180));
-            return min + ' мин';
-        }
-
         // Копировать ссылку на конкретный пост
         // Офлайн-чтение: сохраняем страницу истории в отдельный кеш браузера
-        const OFFLINE_CACHE = 'shersh-offline-v1';
 
-        function postPageUrl(id) {
-            const base = location.origin + location.pathname.replace(/[^/]*$/, '');
-            return base + 'post-' + id + '.html';
-        }
-
-        async function isSavedOffline(id) {
-            if (!('caches' in window)) return false;
-            try {
-                const cache = await caches.open(OFFLINE_CACHE);
-                return !!(await cache.match(postPageUrl(id)));
-            } catch (e) { return false; }
-        }
-
-        async function refreshOfflineButtons() {
-            const buttons = document.querySelectorAll('.offline-btn');
-            for (const btn of buttons) {
-                const saved = await isSavedOffline(btn.dataset.post);
-                btn.textContent = saved ? '✓ Офлайн' : '📥 Офлайн';
-                btn.classList.toggle('is-saved', saved);
-                btn.title = saved ? 'Сказка сохранена — откроется без интернета' : 'Сохранить сказку для чтения без интернета';
-            }
-        }
-
-        window.toggleOffline = async function(id) {
-            if (!('caches' in window)) {
-                showToast('Браузер не умеет сохранять офлайн', true);
-                return;
-            }
-            const url = postPageUrl(id);
-            try {
-                const cache = await caches.open(OFFLINE_CACHE);
-                const saved = await cache.match(url);
-                if (saved) {
-                    await cache.delete(url);
-                    showToast('Сохранённая копия удалена');
-                } else {
-                    const response = await fetch(url, { cache: 'no-store' });
-                    if (!response.ok) throw new Error('Страница истории ещё не собрана — попробуйте позже');
-                    await cache.put(url, response.clone());
-                    showToast('Сказка сохранена — откроется без интернета');
-                }
-                await refreshOfflineButtons();
-            } catch (e) {
-                showToast(e.message || 'Не удалось сохранить', true);
-            }
-        };
-
-        // Сказка дня: одна история на сутки, выбор детерминированный по дате
-        function taleOfDayIndex() {
-            if (!posts.length) return -1;
-            const now = new Date();
-            const seed = Number('' + now.getFullYear()
-                + String(now.getMonth() + 1).padStart(2, '0')
-                + String(now.getDate()).padStart(2, '0'));
-            return seed % posts.length;
-        }
-
-        function renderTaleOfDay() {
-            const box = document.getElementById('taleOfDay');
-            if (!box) return;
-            const index = taleOfDayIndex();
-            if (index < 0) { box.style.display = 'none'; return; }
-            const post = posts[index];
-            const excerpt = (post.text || '').replace(/\s+/g, ' ').trim();
-            const short = excerpt.length > 220 ? excerpt.slice(0, 220).trimEnd() + '…' : excerpt;
-            box.innerHTML = `
-                <span class="tale-of-day__label">🌙 Сказка дня</span>
-                <h2>${escapeHTML(post.title)}</h2>
-                <div class="tale-of-day__meta">${escapeHTML(post.author)} · ⏱ ${readingTime(post.text)}</div>
-                <p>${escapeHTML(short)}</p>
-                <div class="tale-of-day__actions">
-                    <button class="btn btn-soft" onclick="openTaleOfDay(${index})">Читать</button>
-                    <a class="btn btn-soft" href="${postPageUrl(post.id)}" target="_blank" rel="noopener">Страница истории</a>
-                </div>`;
-            box.style.display = 'block';
-        }
-
-        window.openTaleOfDay = function (index) {
-            window.openComments(index);
-        };
-
-        window.copyPostLink = function(id) {
+// Сказка дня: одна история на сутки, выбор детерминированный по дате
+window.copyPostLink = function(id) {
             const base = location.origin + location.pathname.replace(/[^/]*$/, '');
             const url = base + 'post-' + id + '.html';
             navigator.clipboard.writeText(url)
@@ -2366,6 +2156,7 @@
 
         // Слой совместимости: разметка зовёт функции через inline-обработчики,
         // а внутри ES-модуля они не попадают в глобальную область сами по себе.
+        setToastHandler(showToast);
         Object.assign(window, {
             closeImageModal,
             insertHint,
