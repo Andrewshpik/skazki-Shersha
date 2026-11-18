@@ -9,21 +9,16 @@ import sys
 
 PATH = "src/app/main.js"
 
-IMPORTS = """import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';
+IMPORTS = """import { initLikes } from '../features/like/index.js';
 """
 
-FUNCTIONS = [
-    "tagHash",
-    "syncTagFromHash",
-]
+FUNCTIONS = []
 
-WINDOW_FUNCTIONS = ["applyTagFilter", "filterByTag", "clearTagFilter"]
+WINDOW_FUNCTIONS = ["toggleLike"]
 
-CONSTS = ["TAG_PREFIX", "activeTag"]
+CONSTS = []
 
-SNIPPET_PATTERNS = [
-    r"window\.addEventListener\('hashchange', syncTagFromHash\);\s*\n\s*window\.addEventListener\('load', syncTagFromHash\);\s*\n\s*setTimeout\(syncTagFromHash, 2000\);\s*\n\s*\n",
-]
+SNIPPET_PATTERNS = []
 
 
 def _cut_block(source, start, params_from):
@@ -98,7 +93,7 @@ def main():
         print("НЕ НАЙДЕНЫ: " + ", ".join(missing), file=sys.stderr)
         return 1
 
-    marker = "import { filterPosts } from '../features/search/index.js';\n"
+    marker = "import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';\n"
     if marker not in source:
         print("Не найден блок импортов", file=sys.stderr)
         return 1

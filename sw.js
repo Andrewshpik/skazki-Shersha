@@ -1,6 +1,6 @@
 // Service Worker для «Сказок Шерша»
 // Кэширует статические файлы (оболочку сайта) для быстрой загрузки и офлайн-режима.
-const CACHE = 'shersha-cache-v34';
+const CACHE = 'shersha-cache-v35';
 const OFFLINE_CACHE = 'shersh-offline-v1';
 const ASSETS = [
   './',
@@ -16,6 +16,7 @@ const ASSETS = [
   './src/features/page-view/index.js',
   './src/features/search/index.js',
   './src/features/tag-filter/index.js',
+  './src/features/like/index.js',
   './src/widgets/tale-of-day/index.js',
   './src/widgets/notifications/index.js',
   './admin.css',

@@ -10,6 +10,7 @@ import { trackView } from '../features/page-view/index.js';
 import { updateBell, initNotifications } from '../widgets/notifications/index.js';
 import { filterPosts } from '../features/search/index.js';
 import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';
+import { initLikes } from '../features/like/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -1223,20 +1224,7 @@ window.copyPostLink = function(id) {
         // Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
 
 // Уведомления собираются из уже загруженной ленты: отдельной таблицы не нужно
-                window.toggleLike = async function(index) {
-            const post = posts[index];
-            if (!userData.name || userData.isGuest) { showToast('Гости не могут ставить лайки!', true); return; }
-            try {
-                const data = await api('/api/posts/' + post.id + '/like', { method: 'POST', body: JSON.stringify({ user: userData.name }) });
-                post.isLiked = (data.status === 'liked');
-                post.likes = data.likes;
-                if (post.isLiked) likedSet.add(post.id); else likedSet.delete(post.id);
-                localStorage.setItem(POSTS_CACHE_KEY, JSON.stringify(posts));
-                renderPosts();
-            } catch (e) { showToast(e.message, true); }
-        };
-
-        window.editPost = function(id) {
+window.editPost = function(id) {
             const post = posts.find(p => p.id === id);
             if (!post) return;
             
@@ -1887,6 +1875,7 @@ window.copyPostLink = function(id) {
         setToastHandler(showToast);
         initNotifications();
         initTagFilter({ render: renderPosts, toast: showToast, collapseCloud: collapseTagsCloud });
+        initLikes({ toast: showToast, render: renderPosts, getLikedSet: () => likedSet });
         Object.assign(window, {
             closeImageModal,
             insertHint,
