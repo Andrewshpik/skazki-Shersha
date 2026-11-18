@@ -9,12 +9,13 @@ import sys
 
 PATH = "src/app/main.js"
 
-IMPORTS = """import { initLikes } from '../features/like/index.js';
+IMPORTS = """import { setToastHandler as setShareToast } from '../features/share/index.js';
+import { initReports } from '../features/report/index.js';
 """
 
 FUNCTIONS = []
 
-WINDOW_FUNCTIONS = ["toggleLike"]
+WINDOW_FUNCTIONS = ["copyPostLink", "sharePost", "reportPost", "reportComment"]
 
 CONSTS = []
 
@@ -93,7 +94,7 @@ def main():
         print("НЕ НАЙДЕНЫ: " + ", ".join(missing), file=sys.stderr)
         return 1
 
-    marker = "import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';\n"
+    marker = "import { initLikes } from '../features/like/index.js';\n"
     if marker not in source:
         print("Не найден блок импортов", file=sys.stderr)
         return 1

@@ -11,6 +11,8 @@ import { updateBell, initNotifications } from '../widgets/notifications/index.js
 import { filterPosts } from '../features/search/index.js';
 import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-filter/index.js';
 import { initLikes } from '../features/like/index.js';
+import { setToastHandler as setShareToast } from '../features/share/index.js';
+import { initReports } from '../features/report/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -1151,15 +1153,7 @@ function renderPosts() {
         // Офлайн-чтение: сохраняем страницу истории в отдельный кеш браузера
 
 // Сказка дня: одна история на сутки, выбор детерминированный по дате
-window.copyPostLink = function(id) {
-            const base = location.origin + location.pathname.replace(/[^/]*$/, '');
-            const url = base + 'post-' + id + '.html';
-            navigator.clipboard.writeText(url)
-                .then(() => showToast('Ссылка на пост скопирована'))
-                .catch(() => showToast('Не удалось скопировать', true));
-        };
-
-        // Сортировка: новые (по дате) или популярные (по лайкам)
+// Сортировка: новые (по дате) или популярные (по лайкам)
         window.changeSort = function() {
             const mode = document.getElementById('sortSelect').value;
             const arr = [...posts];
@@ -1173,55 +1167,8 @@ window.copyPostLink = function(id) {
             renderPosts();
         };
 
-        window.sharePost = function(index) {
-            const post = posts[index];
-            if (!post) return;
-            // Попытка нативного шеринга
-            if (navigator.share) {
-                navigator.share({ title: post.title, text: post.text.slice(0, 200) }).catch(() => {});
-                return;
-            }
-            // Запасной вариант: копируем ссылку на карточку
-            const url = location.origin + location.pathname + '#post-' + post.id;
-            navigator.clipboard.writeText(url).then(() => showToast('Ссылка скопирована!')).catch(() => showToast('Не удалось скопировать', true));
-        };
-
-        // Модерация: пожаловаться
-        window.reportPost = async function(id) {
-            const post = posts.find(p => p.id === id);
-            if (!post) return;
-            const answer = await uiPrompt('Жалоба на историю', {
-                text: 'Расскажи, что не так — модератор посмотрит.',
-                inputLabel: 'Причина (необязательно):',
-                placeholder: 'Например: оскорбления',
-                multiline: true,
-                okText: 'Отправить'
-            });
-            if (answer === null) return;
-            const reason = answer.trim();
-            try {
-                await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'post', target_id: String(id), target_author: post.author, reporter: userData.name, reason }) });
-                showToast('Жалоба отправлена. Спасибо!');
-            } catch (e) { showToast(e.message, true); }
-        };
-
-        window.reportComment = async function(commentId, author) {
-            const answer = await uiPrompt('Жалоба на комментарий', {
-                text: 'Расскажи, что не так — модератор посмотрит.',
-                inputLabel: 'Причина (необязательно):',
-                placeholder: 'Например: спам',
-                multiline: true,
-                okText: 'Отправить'
-            });
-            if (answer === null) return;
-            const reason = answer.trim();
-            try {
-                await api('/api/report', { method: 'POST', body: JSON.stringify({ type: 'comment', target_id: String(commentId), target_author: author, reporter: userData.name, reason }) });
-                showToast('Жалоба отправлена. Спасибо!');
-            } catch (e) { showToast(e.message, true); }
-        };
-
-        // Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
+// Модерация: пожаловаться
+// Уведомления: показываем счётчик новых комментариев к моим постам (после последнего клика)
 
 // Уведомления собираются из уже загруженной ленты: отдельной таблицы не нужно
 window.editPost = function(id) {
@@ -1876,6 +1823,8 @@ window.editPost = function(id) {
         initNotifications();
         initTagFilter({ render: renderPosts, toast: showToast, collapseCloud: collapseTagsCloud });
         initLikes({ toast: showToast, render: renderPosts, getLikedSet: () => likedSet });
+        setShareToast(showToast);
+        initReports({ prompt: uiPrompt, toast: showToast });
         Object.assign(window, {
             closeImageModal,
             insertHint,
