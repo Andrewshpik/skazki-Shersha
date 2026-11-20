@@ -7,6 +7,7 @@ import time
 import binascii
 import uuid
 import secrets
+import threading
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 import requests
@@ -102,6 +103,79 @@ _HEADERS = {
 }
 
 
+# --- Ежедневный бэкап базы в Storage ---
+BACKUP_TABLES = ["profiles", "posts", "comments", "likes", "reports", "banned", "subscriptions"]
+BACKUP_FOLDER = "backups"
+_backup_lock = threading.Lock()
+_last_backup_check = 0.0
+
+
+def _backup_name(day=None):
+    day = day or datetime.now(timezone.utc).date().isoformat()
+    return f"backup-{day}.json"
+
+
+def _backup_url(name):
+    return f"{SUPABASE_URL.rstrip('/')}/storage/v1/object/public/images/{BACKUP_FOLDER}/{name}"
+
+
+def run_backup():
+    """Снимает дамп основных таблиц и кладёт его в Storage. Повторно за день не делает."""
+    with _backup_lock:
+        name = _backup_name()
+        url = _backup_url(name)
+        try:
+            if requests.head(url, timeout=20).status_code == 200:
+                return {"created": False, "url": url}
+        except Exception:
+            pass
+
+        dump = {"created_at": datetime.now(timezone.utc).isoformat(), "tables": {}, "errors": []}
+        for table in BACKUP_TABLES:
+            try:
+                dump["tables"][table] = db_select(table, params={"select": "*"})
+            except Exception as error:
+                dump["tables"][table] = []
+                dump["errors"].append(f"{table}: {str(error)[:120]}")
+
+        body = json.dumps(dump, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "apikey": SUPABASE_SERVICE_KEY,
+            "Authorization": "Bearer " + SUPABASE_SERVICE_KEY,
+            "Content-Type": "application/json",
+        }
+        try:
+            up = requests.post(
+                f"{SUPABASE_STORAGE}/object/images/{BACKUP_FOLDER}/{name}",
+                headers=headers, data=body, timeout=60,
+            )
+            created = up.status_code in (200, 201)
+            if not created:
+                dump["errors"].append(f"storage: {up.status_code} {up.text[:120]}")
+        except Exception as error:
+            created = False
+            dump["errors"].append(f"storage: {str(error)[:120]}")
+
+        return {"created": created, "url": url, "bytes": len(body), "errors": dump["errors"]}
+
+
+def maybe_daily_backup():
+    """Раз в час проверяет, есть ли копия за сегодня, и при необходимости делает её в фоне."""
+    global _last_backup_check
+    now = time.time()
+    if now - _last_backup_check < 3600:
+        return
+    _last_backup_check = now
+
+    def worker():
+        try:
+            run_backup()
+        except Exception:
+            pass
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def db_select(table, params=None):
     params = params or {}
     r = requests.get(f"{SUPABASE_REST}/{table}", headers=_HEADERS, params=params, timeout=20)
@@ -157,6 +231,12 @@ PROFANITY_WORDS = tuple([
     "гандон", "мудак", "мудил", "мудозвон", "пидор", "уёбок", "ёб", "ебл",
     "шлюха", "проститут", "разъеб", "выеб", "хуета", "хуйня",
 ])
+
+
+def _count_links(text):
+    """Грубый счётчик ссылок: http/https и www без схемы."""
+    low = (text or "").lower()
+    return low.count("http://") + low.count("https://") + low.count("www.")
 
 
 def contains_profanity(text):
@@ -342,6 +422,7 @@ def webhook():
 
 @app.route("/check_auth", methods=["GET"])
 def check_auth():
+    maybe_daily_backup()
     code = request.args.get("code")
     if not code:
         return jsonify({"status": "waiting"}), 200
@@ -903,6 +984,8 @@ def create_post():
         return jsonify({"error": "Текст не длиннее 20 000 символов"}), 400
     if contains_profanity(title) or contains_profanity(text):
         return jsonify({"error": "Текст содержит нецензурные выражения"}), 400
+    if _count_links(text) > 3:
+        return jsonify({"error": "Слишком много ссылок в истории — максимум 3"}), 400
     row = db_insert("posts", {"title": title, "text": text, "author": author,
                               "image": image, "audio": audio, "likes": 0})[0]
     return jsonify({"status": "ok", "post": row})
@@ -1032,6 +1115,18 @@ def add_comment(post_id):
         return jsonify({"error": "Комментарий не длиннее 3000 символов"}), 400
     if contains_profanity(text):
         return jsonify({"error": "Комментарий содержит нецензурные выражения"}), 400
+    if _count_links(text) > 2:
+        return jsonify({"error": "Слишком много ссылок в комментарии — максимум 2"}), 400
+    if text:
+        try:
+            recent = db_select("comments", params={
+                "select": "text", "post_id": f"eq.{post_id}", "author": f"eq.{author}",
+                "order": "date.desc", "limit": "5",
+            })
+        except Exception:
+            recent = []
+        if any((row.get("text") or "").strip() == text for row in recent):
+            return jsonify({"error": "Такой комментарий уже отправлен"}), 400
     payload = {"post_id": post_id, "author": author or "Аноним",
                "text": text, "image": image}
     if parent_id is not None:
@@ -1313,6 +1408,51 @@ def toggle_subscription():
         return jsonify({"status": "unsubscribed", "subscribed": False})
     db_insert("subscriptions", {"follower": user, "author": author})
     return jsonify({"status": "subscribed", "subscribed": True})
+
+
+@app.route("/api/admin/backup", methods=["GET"])
+def admin_backup():
+    """Снимает бэкап принудительно (копия за сегодня перезаписывается только если её нет)."""
+    if not require_admin():
+        return jsonify({"error": "Нет прав"}), 403
+    return jsonify(run_backup())
+
+
+@app.route("/api/admin/backup/verify", methods=["GET"])
+def admin_backup_verify():
+    """Сверяет строки в сегодняшней копии с текущей базой — быстрая проверка восстановимости."""
+    if not require_admin():
+        return jsonify({"error": "Нет прав"}), 403
+
+    url = _backup_url(_backup_name())
+    try:
+        response = requests.get(url, timeout=60)
+    except Exception as error:
+        return jsonify({"error": "Копию не удалось скачать: " + str(error)[:120]}), 502
+    if response.status_code != 200:
+        return jsonify({"error": "Копии за сегодня нет"}), 404
+    try:
+        dump = response.json()
+    except Exception:
+        return jsonify({"error": "Копия повреждена"}), 500
+
+    report = {}
+    for table, rows in (dump.get("tables") or {}).items():
+        try:
+            live = db_select(table, params={"select": "*"})
+        except Exception:
+            live = []
+        report[table] = {
+            "in_backup": len(rows or []),
+            "live": len(live or []),
+            "ok": len(rows or []) <= len(live or []),
+        }
+
+    return jsonify({
+        "created_at": dump.get("created_at"),
+        "tables": report,
+        "errors": dump.get("errors") or [],
+    })
 
 
 @app.route("/api/admin/stats", methods=["GET"])
