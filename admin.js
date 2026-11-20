@@ -191,12 +191,13 @@ const API = 'https://shersh-auth.de1.netrun.io';
                     ? `<button class="btn btn-ghost btn-small" data-act="unban" data-name="${escapeHTML(u.name)}">Разбанить</button>`
                     : `<button class="btn btn-danger btn-small" data-act="ban" data-name="${escapeHTML(u.name)}">Забанить</button>`;
                 const adminBtn = `<button class="btn btn-ghost btn-small" data-act="toggleadmin" data-name="${escapeHTML(u.name)}" data-admin="${u.is_admin ? '1' : '0'}">${u.is_admin ? 'Снять админа' : 'Сделать админом'}</button>`;
+                const passBtn = `<button class="btn btn-ghost btn-small" data-act="resetpass" data-name="${escapeHTML(u.name)}">🔑 Пароль</button>`;
                 return row({
                     title: u.name + (u.nickname ? ' · ' + u.nickname : ''),
                     badges,
                     meta: `Историй: ${u.posts_count} · Комментариев: ${u.comments_count}`,
                     text: u.bio || '',
-                    actions: banBtn + adminBtn
+                    actions: banBtn + adminBtn + passBtn
                 });
             }).join('');
         }
@@ -342,6 +343,23 @@ const API = 'https://shersh-auth.de1.netrun.io';
             }
         }
 
+        async function resetPassword(name) {
+            const suggested = Math.random().toString(36).slice(2, 10);
+            const value = await uiPrompt('Новый пароль для ' + name, {
+                text: 'Сообщите пароль лично — это резервный путь, если Telegram недоступен.',
+                inputLabel: 'Пароль (не короче 6 символов):',
+                value: suggested,
+                okText: 'Сменить пароль'
+            });
+            if (value === null) return;
+            const password = String(value).trim();
+            if (password.length < 6) { showToast('Пароль короче 6 символов', true); return; }
+            try {
+                await api('/api/admin/user', { method: 'PATCH', body: { target: name, password } });
+                showToast('Пароль изменён: ' + password);
+            } catch (e) { showToast(e.message, true); }
+        }
+
         async function banUser(name) {
             const reason = await uiPrompt('Забанить пользователя', {
                 text: name + ' больше не сможет писать на сайте.',
@@ -427,6 +445,7 @@ const API = 'https://shersh-auth.de1.netrun.io';
             if (act === 'ban') banUser(btn.dataset.name);
             else if (act === 'unban') unbanUser(btn.dataset.name);
             else if (act === 'toggleadmin') toggleAdmin(btn.dataset.name, btn.dataset.admin === '1');
+            else if (act === 'resetpass') resetPassword(btn.dataset.name);
             else if (act === 'delreport') deleteReport(btn.dataset.id);
             else if (act === 'delpost') deletePost(btn.dataset.id);
             else if (act === 'delcomment') deleteComment(btn.dataset.id);
