@@ -15,6 +15,7 @@ import { initLikes } from '../features/like/index.js';
 import { setToastHandler as setShareToast } from '../features/share/index.js';
 import { initReports } from '../features/report/index.js';
 import { renderCommentsInto } from '../features/comments/index.js';
+import { updateHeaderUI as updateHeaderView, showPage as showPageView } from '../widgets/header/index.js';
 import { openUiDialog, uiConfirm, uiPrompt, openImageModal, closeImageModal, syncBodyScrollLock, topVisibleModal } from '../widgets/modals/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
@@ -334,45 +335,11 @@ import { openUiDialog, uiConfirm, uiPrompt, openImageModal, closeImageModal, syn
         });
 
         function updateHeaderUI() {
-            const btn = document.getElementById('headerProfileBtn');
-            btn.textContent = userData.name ? `👋 ${userData.name}` : '👋 Гость';
-
-            const logoutBtn = document.getElementById('headerLogoutBtn');
-            if (userData.name && !userData.isGuest) {
-                logoutBtn.style.display = 'block';
-            } else {
-                logoutBtn.style.display = 'none';
-            }
-
-            // Кнопка админ-панели видна только администратору
-            const adminBtn = document.getElementById('adminPanelBtn');
-            if (adminBtn) {
-                adminBtn.style.display = (userData.name && !userData.isGuest && userData.is_admin) ? 'block' : 'none';
-            }
-
-            // Колокольчик уведомлений виден только залогиненным
-            const bellBtn = document.getElementById('bellBtn');
-            const bellBadge = document.getElementById('bellBadge');
-            if (userData.name && !userData.isGuest) {
-                bellBtn.style.display = 'inline-block';
-                updateBell();
-            } else {
-                bellBtn.style.display = 'none';
-                bellBadge.style.display = 'none';
-            }
-            
-            const searchContainer = document.getElementById('searchContainer');
-            if (document.getElementById('profile-page').style.display === 'block' || document.getElementById('other-profile-page').style.display === 'block') {
-                searchContainer.style.display = 'none';
-            } else { searchContainer.style.display = 'block'; }
+            updateHeaderView(userData);
         }
 
         function showPage(page) {
-            document.getElementById('feed-page').style.display = page === 'feed' ? 'block' : 'none';
-            document.getElementById('profile-page').style.display = page === 'profile' ? 'block' : 'none';
-            document.getElementById('other-profile-page').style.display = page === 'other' ? 'block' : 'none';
-            updateHeaderUI();
-            if (page === 'profile') updateProfileUI();
+            showPageView(page, userData, updateProfileUI);
         }
 
         function updateProfileUI() {
