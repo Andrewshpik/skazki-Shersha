@@ -1,4 +1,5 @@
 import os
+import re
 import hashlib
 import hmac
 import base64
@@ -239,12 +240,19 @@ def _count_links(text):
     return low.count("http://") + low.count("https://") + low.count("www.")
 
 
+def _profanity_hit(low, word):
+    """Короткие основы проверяем по границе слова: иначе «дубля» и «рубля» ловятся как мат."""
+    if len(word) <= 4:
+        return re.search(r"(?<![а-яёa-z])" + re.escape(word), low) is not None
+    return word in low
+
+
 def contains_profanity(text):
     if not text:
         return False
     low = text.lower()
     for w in PROFANITY_WORDS:
-        if w in low:
+        if _profanity_hit(low, w):
             return True
     return False
 
