@@ -1543,11 +1543,20 @@ def admin_update_user():
     target = (data.get("target") or "").strip()
     if not admin or not target:
         return jsonify({"error": "Нет прав или нет цели"}), 403
-    if "is_admin" not in data:
+    if "is_admin" not in data and "password" not in data:
         return jsonify({"error": "Нет данных для обновления"}), 400
-    if target == admin and not bool(data.get("is_admin")):
+    if target == admin and "is_admin" in data and not bool(data.get("is_admin")):
         return jsonify({"error": "Нельзя снять права с самого себя"}), 400
-    db_update("profiles", {"is_admin": bool(data.get("is_admin"))}, "name", target)
+
+    if "is_admin" in data:
+        db_update("profiles", {"is_admin": bool(data.get("is_admin"))}, "name", target)
+
+    if "password" in data:
+        new_password = str(data.get("password") or "").strip()
+        if len(new_password) < 6:
+            return jsonify({"error": "Пароль короче 6 символов"}), 400
+        db_update("profiles", {"password_hash": hash_password(new_password)}, "name", target)
+
     return jsonify({"status": "ok"})
 
 
