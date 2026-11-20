@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Политика конфиденциальности — Сказки Шерша</title>
+<meta name="description" content="Какие данные собирает сайт «Сказки Шерша», зачем они нужны, где хранятся и как их удалить.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://andrewshpik.github.io/skazki-Shersha/privacy.html">
+<link rel="icon" type="image/png" href="shersh_cursor.png">
+<style>
+:root { color-scheme: light dark; --fg: #2c3e50; --muted: #6b7a8c; --bg: #f4f6f8; --card: #fff; --line: #e1e8ed; --gold: #c9a227; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e6e6e6; --muted: #a3a3a3; --bg: #1a1a2e; --card: #1f2b4d; --line: #2a3b66; --gold: #ffd700; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.65; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; }
+a { color: var(--gold); }
+h1 { font-size: clamp(1.4rem, 3.4vw, 2rem); line-height: 1.25; margin: 0 0 8px; }
+h2 { font-size: 1.1rem; margin: 26px 0 8px; }
+p, li { font-size: 1rem; }
+.meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 18px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 18px 0; }
+ul { padding-left: 22px; }
+.nav { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 0.95rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+</style>
+</head>
+<body>
+<main>
+<h1>Политика конфиденциальности</h1>
+<div class="meta">Сайт «Сказки Шерша» · обновлено 20 ноября 2026 года</div>
+
+<p>Эта страница объясняет простыми словами, какие данные собирает сайт «Сказки Шерша», зачем они нужны, где хранятся и как их удалить. Регистрируясь на сайте, вы соглашаетесь с этой политикой и с обработкой перечисленных ниже данных.</p>
+
+<h2>Какие данные мы собираем</h2>
+<div class="card">
+<table>
+<tr><th>Данные</th><th>Когда появляются</th><th>Зачем нужны</th></tr>
+<tr><td>Имя, никнейм, пароль</td><td>при регистрации</td><td>вход в аккаунт; пароль хранится только в виде необратимого хеша</td></tr>
+<tr><td>Аватар, описание профиля</td><td>если вы их заполнили</td><td>отображение в профиле и рядом с историями</td></tr>
+<tr><td>Истории, комментарии, лайки, жалобы</td><td>когда вы ими пользуетесь</td><td>работа ленты, комментариев и модерации</td></tr>
+<tr><td>Просмотры историй</td><td>при открытии истории</td><td>статистика для автора, без привязки к личности</td></tr>
+<tr><td>Telegram ID</td><td>если вы привязали Telegram</td><td>вход через бота и восстановление пароля</td></tr>
+<tr><td>IP-адрес</td><td>при запросах к серверу</td><td>защита от спама и подбора паролей; в базу не записывается</td></tr>
+</table>
+</div>
+
+<h2>Где хранятся данные</h2>
+<p>Истории, профили и комментарии хранятся в базе данных Supabase (серверы в Европе), серверная часть работает на хостинге Netrun, файлы — в хранилище Supabase. Доступ к базе есть только у серверной части сайта.</p>
+
+<h2>Что хранится в вашем браузере</h2>
+<p>Сайт использует localStorage и sessionStorage, а не рекламные cookie. Там лежат: тема оформления, токен входа, кэш ленты (чтобы сайт открывался быстрее), черновик истории, отметки о просмотренных уведомлениях, сохранённые для офлайн-чтения сказки. Эти данные не передаются третьим лицам, и их можно стереть, очистив данные сайта в браузере.</p>
+
+<h2>Чего мы не делаем</h2>
+<ul>
+<li>не продаём и не передаём данные третьим лицам;</li>
+<li>не используем рекламные трекеры и аналитику сторонних сервисов;</li>
+<li>не собираем данные о детях целенаправленно;</li>
+<li>не рассылаем письма — у сайта нет email-рассылки.</li>
+</ul>
+
+<h2>Сколько хранятся данные</h2>
+<p>Истории и комментарии хранятся, пока вы их не удалите. Токен входа действует 30 дней. Коды восстановления пароля удаляются после использования или по истечении срока. Просмотры хранятся как счётчик, без указания, кто именно смотрел.</p>
+
+<h2>Ваши права</h2>
+<p>В профиле можно изменить имя, никнейм, описание и аватар, скачать свои истории в JSON или текстом, а также удалить аккаунт вместе со всеми своими данными одной кнопкой. Удаление необратимо.</p>
+
+<h2>Дети</h2>
+<p>Сайт рассчитан на семейное чтение, но аккаунт стоит заводить с 14 лет. Если вы родитель и хотите удалить данные ребёнка — напишите нам, мы удалим аккаунт.</p>
+
+<h2>Изменения политики</h2>
+<p>Если политика изменится, дата обновления наверху страницы поменяется. Существенные изменения мы отметим на главной.</p>
+
+<h2>Связаться</h2>
+<p>Вопросы по данным и удалению аккаунта: Telegram-бот <a href="https://t.me/Shersh_authbot" target="_blank" rel="noopener">@Shersh_authbot</a> или автор сайта в Telegram. Отвечаем в течение нескольких дней.</p>
+
+<nav class="nav">
+<a href="index.html">← На главную</a>
+<a href="index.html" onclick="return false" aria-disabled="true">Правила сообщества — в футере сайта</a>
+</nav>
+</main>
+</body>
+</html>

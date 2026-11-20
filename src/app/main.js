@@ -1,6 +1,6 @@
 // Точка входа приложения. Общие утилиты и клиент API живут в shared.
 import { API_BASE, TOKEN_KEY, POSTS_CACHE_KEY, MAX_UPLOAD_BYTES } from '../shared/config.js';
-import { api, getToken, setToken, clearToken, clearSession } from '../shared/lib/api.js';
+import { api, getToken, setToken, clearToken, clearSession, setRetryHandler } from '../shared/lib/api.js';
 import { escapeHTML, formatDate, readingTime, normalizeForSearch } from '../shared/lib/format.js';
 import { validateImageFile, compressImage, uploadImage } from '../shared/lib/images.js';
 import { extractTags } from '../entities/post/model.js';
@@ -340,6 +340,12 @@ import { initReports } from '../features/report/index.js';
             const pass = document.getElementById('regPassInput').value.trim();
 
             if (!name || !nick || !pass) { showToast('Заполни все поля!', true); return; }
+
+            const consent = document.getElementById('regConsent');
+            if (consent && !consent.checked) {
+                showToast('Отметь согласие на обработку персональных данных', true);
+                return;
+            }
 
             try {
                 const data = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, nickname: nick, password: pass }) });
@@ -1824,6 +1830,7 @@ window.editPost = function(id) {
         initTagFilter({ render: renderPosts, toast: showToast, collapseCloud: collapseTagsCloud });
         initLikes({ toast: showToast, render: renderPosts, getLikedSet: () => likedSet });
         setShareToast(showToast);
+        setRetryHandler((attempt, total) => showToast(`Сервер просыпается, ещё попытка (${attempt} из ${total})…`));
         initReports({ prompt: uiPrompt, toast: showToast });
         Object.assign(window, {
             closeImageModal,

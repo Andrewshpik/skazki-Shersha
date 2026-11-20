@@ -20,12 +20,22 @@ export function clearSession() {
     clearToken();
 }
 
+let retryHandler = null;
+
+// Подсказка «сервер просыпается»: вызывается перед повторной попыткой.
+export function setRetryHandler(handler) {
+    if (typeof handler === 'function') retryHandler = handler;
+}
+
 export async function api(path, options = {}) {
     const attempts = 3;
     let lastErr = null;
 
     for (let i = 0; i < attempts; i++) {
         try {
+            if (i > 0 && retryHandler) {
+                try { retryHandler(i + 1, attempts); } catch (e) { /* подсказка не должна ломать запрос */ }
+            }
             const res = await fetch(API_BASE + path, {
                 ...options,
                 headers: Object.assign(

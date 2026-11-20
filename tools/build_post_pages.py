@@ -260,6 +260,11 @@ def build_sitemap(posts, tag_urls):
         "    <changefreq>weekly</changefreq>",
         "    <priority>0.5</priority>",
         "  </url>",
+        "  <url>",
+        f"    <loc>{SITE.rstrip('/')}/privacy.html</loc>",
+        "    <changefreq>yearly</changefreq>",
+        "    <priority>0.3</priority>",
+        "  </url>",
     ]
     lines.append("</urlset>")
     return "\n".join(lines) + "\n"
