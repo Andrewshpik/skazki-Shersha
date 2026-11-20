@@ -14,6 +14,7 @@ import { getActiveTag, initTagFilter, syncTagFromHash } from '../features/tag-fi
 import { initLikes } from '../features/like/index.js';
 import { setToastHandler as setShareToast } from '../features/share/index.js';
 import { initReports } from '../features/report/index.js';
+import { renderCommentsInto } from '../features/comments/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -1331,80 +1332,22 @@ window.editPost = function(id) {
         });
 
         function renderComments() {
-            commentsList.innerHTML = '';
-            const post = posts[currentPostIndexForComments];
-            if (!post) {
-                commentsList.innerHTML = `
+    const post = posts[currentPostIndexForComments];
+    if (!post) {
+        commentsList.innerHTML = `
                     <div class="skeleton-card" style="padding:12px;">
                         <div class="skeleton-line" style="width:35%"></div>
                         <div class="skeleton-line"></div>
                         <div class="skeleton-line short"></div>
                     </div>`;
-                return;
-            }
-            const comments = post.comments || [];
-            if (comments.length === 0) {
-                commentsList.innerHTML = '<p style="color: #888; text-align: center;">Пока нет комментариев. Будь первым!</p>';
-            } else {
-                // группируем: корни + ответы (вложенность 1 уровень)
-                const roots = comments.filter(c => !c.parent_id);
-                const repliesByParent = {};
-                comments.filter(c => c.parent_id).forEach(c => {
-                    const key = String(c.parent_id);
-                    (repliesByParent[key] = repliesByParent[key] || []).push(c);
-                });
-                // если корень не найден (удалён), показываем ответ как корень
-                const orphanReplies = Object.keys(repliesByParent)
-                    .filter(k => !roots.some(r => String(r.id) === k))
-                    .flatMap(k => repliesByParent[k]);
-
-                roots.forEach(c => {
-                    commentsList.appendChild(buildCommentNode(c, false));
-                    (repliesByParent[String(c.id)] || []).forEach(r => {
-                        commentsList.appendChild(buildCommentNode(r, true));
-                    });
-                });
-                orphanReplies.forEach(c => commentsList.appendChild(buildCommentNode(c, false)));
-            }
-            commentInput.value = '';
-            currentCommentImageBase64 = null;
-            commentImagePreview.style.display = 'none';
-            commentImagePreview.src = '';
-        }
-
-        function buildCommentNode(c, isReply) {
-            const div = document.createElement('div');
-            div.className = 'comment-item' + (isReply ? ' comment-reply' : '');
-
-            const imageHTML = c.image ? `<img src="${c.image}" class="comment-image" alt="Фото в комментарии" loading="lazy" onclick="openImageModal('${c.image}')">` : '';
-            const own = userData.name && c.author === userData.name && !userData.isGuest;
-            const editBtn = own
-                ? `<button class="delete-comment-btn" onclick="editComment(${c.id})" title="Редактировать комментарий" aria-label="Редактировать комментарий">✏️</button>`
-                : '';
-            const deleteBtn = own
-                ? `<button class="delete-comment-btn" onclick="deleteComment(${c.id})" title="Удалить комментарий" aria-label="Удалить комментарий">🗑️</button>`
-                : '';
-            const reportBtn = !userData.isGuest && userData.name
-                ? `<button class="delete-comment-btn" onclick="reportComment(${c.id}, '${escapeHTML(c.author)}')" title="Пожаловаться" aria-label="Пожаловаться на комментарий">🚩</button>`
-                : '';
-            const replyBtn = !isReply && !userData.isGuest && userData.name
-                ? `<button class="delete-comment-btn reply-btn" onclick="setReply(${c.id}, '${escapeHTML(c.author).replace(/'/g, "\\'")}')" title="Ответить" aria-label="Ответить на комментарий">↩️</button>`
-                : '';
-
-            div.innerHTML = `
-                <div class="comment-header">
-                    <span class="comment-author">${escapeHTML(c.author)}</span>
-                    <span>${formatDate(c.date)}</span>
-                    ${replyBtn}
-                    ${editBtn}
-                    ${reportBtn}
-                    ${deleteBtn}
-                </div>
-                <div class="comment-text" data-cid="${c.id}">${escapeHTML(c.text)}</div>
-                ${imageHTML}
-            `;
-            return div;
-        }
+        return;
+    }
+    renderCommentsInto(commentsList, post.comments || [], userData);
+    commentInput.value = '';
+    currentCommentImageBase64 = null;
+    commentImagePreview.style.display = 'none';
+    commentImagePreview.src = '';
+}
 
         document.getElementById('closeCommentsBtn').addEventListener('click', () => { commentsModal.style.display = 'none'; });
 
