@@ -15,6 +15,7 @@ import { initLikes } from '../features/like/index.js';
 import { setToastHandler as setShareToast } from '../features/share/index.js';
 import { initReports } from '../features/report/index.js';
 import { renderCommentsInto } from '../features/comments/index.js';
+import { openUiDialog, uiConfirm, uiPrompt, openImageModal, closeImageModal, syncBodyScrollLock, topVisibleModal } from '../widgets/modals/index.js';
 
         // Сжатие изображения на клиенте (уменьшает вес до ~1280px по ширине)
 
@@ -162,124 +163,6 @@ import { renderCommentsInto } from '../features/comments/index.js';
                 toast.style.animation = 'slideIn 0.3s ease-in reverse forwards';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
-        }
-
-        // --- Свои окна вместо нативных alert/confirm/prompt ---
-        function openUiDialog(opts) {
-            const o = Object.assign({
-                title: '', text: '', value: '', placeholder: '', inputLabel: '',
-                multiline: false, hasInput: false, okText: 'OK', cancelText: 'Отмена',
-                danger: false, requireText: null
-            }, opts || {});
-
-            return new Promise(resolve => {
-                const overlay = document.createElement('div');
-                overlay.className = 'modal-overlay ui-dialog';
-                overlay.style.display = 'flex';
-
-                const box = document.createElement('div');
-                box.className = 'modal-content';
-                box.setAttribute('role', 'dialog');
-                box.setAttribute('aria-modal', 'true');
-                box.setAttribute('aria-label', o.title);
-
-                const h = document.createElement('h2');
-                h.style.textAlign = 'center';
-                h.textContent = o.title;
-                box.appendChild(h);
-
-                if (o.text) {
-                    const p = document.createElement('p');
-                    p.className = 'ui-dialog-text';
-                    p.textContent = o.text;
-                    box.appendChild(p);
-                }
-
-                let field = null;
-                const err = document.createElement('div');
-                err.className = 'form-error';
-
-                if (o.hasInput) {
-                    if (o.inputLabel) {
-                        const lbl = document.createElement('label');
-                        lbl.textContent = o.inputLabel;
-                        box.appendChild(lbl);
-                    }
-                    field = document.createElement(o.multiline ? 'textarea' : 'input');
-                    if (o.multiline) { field.rows = 3; } else { field.type = 'text'; }
-                    field.value = o.value || '';
-                    field.placeholder = o.placeholder || '';
-                    field.className = 'ui-dialog-input';
-                    box.appendChild(field);
-                    box.appendChild(err);
-                }
-
-                const btns = document.createElement('div');
-                btns.className = 'modal-buttons';
-
-                const cancelBtn = document.createElement('button');
-                cancelBtn.type = 'button';
-                cancelBtn.className = 'btn btn-cancel';
-                cancelBtn.textContent = o.cancelText;
-
-                const okBtn = document.createElement('button');
-                okBtn.type = 'button';
-                okBtn.className = 'btn' + (o.danger ? ' btn-delete' : '');
-                okBtn.textContent = o.okText;
-
-                btns.appendChild(cancelBtn);
-                btns.appendChild(okBtn);
-                box.appendChild(btns);
-                overlay.appendChild(box);
-                document.body.appendChild(overlay);
-                if (typeof syncBodyScrollLock === 'function') syncBodyScrollLock();
-
-                const close = (result) => {
-                    overlay.remove();
-                    document.removeEventListener('keydown', onKey, true);
-                    if (typeof syncBodyScrollLock === 'function') syncBodyScrollLock();
-                    resolve(result);
-                };
-                const fail = (m) => { err.textContent = m; err.style.display = 'block'; };
-
-                const accept = () => {
-                    if (!field) return close(true);
-                    const v = field.value;
-                    if (o.requireText !== null && (v || '').trim().toUpperCase() !== o.requireText.toUpperCase()) {
-                        return fail('Введите «' + o.requireText + '» — иначе действие отменится');
-                    }
-                    return close(v);
-                };
-
-                const onKey = (e) => {
-                    if (e.key === 'Escape') { e.preventDefault(); close(o.hasInput ? null : false); }
-                    else if (e.key === 'Enter' && (!field || !o.multiline)) { e.preventDefault(); accept(); }
-                };
-
-                okBtn.addEventListener('click', accept);
-                cancelBtn.addEventListener('click', () => close(o.hasInput ? null : false));
-                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(o.hasInput ? null : false); });
-                document.addEventListener('keydown', onKey, true);
-
-                setTimeout(() => { (field || okBtn).focus(); if (field && field.select) field.select(); }, 30);
-            });
-        }
-
-        function uiConfirm(title, text, opts) {
-            return openUiDialog(Object.assign({ title, text, okText: 'Подтвердить' }, opts || {}));
-        }
-
-        function uiPrompt(title, opts) {
-            return openUiDialog(Object.assign({ title, hasInput: true, okText: 'Сохранить' }, opts || {}));
-        }
-
-        function openImageModal(src) {
-            document.getElementById('fullImage').src = src;
-            document.getElementById('imageModal').style.display = 'flex';
-        }
-
-        function closeImageModal() {
-            document.getElementById('imageModal').style.display = 'none';
         }
 
         function insertHint(text) {
@@ -1603,11 +1486,6 @@ window.editPost = function(id) {
         setTimeout(updateOGForCurrentPost, 1500);
 
         // --- Модалки: закрытие по Esc и клику по фону + блокировка прокрутки ---
-        function syncBodyScrollLock() {
-            const anyOpen = Array.from(document.querySelectorAll('.modal-overlay'))
-                .some(m => getComputedStyle(m).display === 'flex');
-            document.body.style.overflow = anyOpen ? 'hidden' : '';
-        }
         const _origShowToastNone = null;
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
@@ -1642,11 +1520,6 @@ window.editPost = function(id) {
         });
 
         // --- Фокус-ловушка: Tab не уходит из открытой модалки ---
-        function topVisibleModal() {
-            const modals = Array.from(document.querySelectorAll('.modal-overlay'))
-                .filter(m => getComputedStyle(m).display !== 'none');
-            return modals.length ? modals[modals.length - 1] : null;
-        }
 
         document.addEventListener('keydown', (e) => {
             if (e.key !== 'Tab') return;
@@ -1683,6 +1556,7 @@ window.editPost = function(id) {
         setRetryHandler((attempt, total) => showToast(`Сервер просыпается, ещё попытка (${attempt} из ${total})…`));
         initReports({ prompt: uiPrompt, toast: showToast });
         Object.assign(window, {
+            openImageModal,
             closeImageModal,
             insertHint,
             showPage,
