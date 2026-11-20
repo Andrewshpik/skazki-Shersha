@@ -6,6 +6,7 @@ import { validateImageFile, compressImage, uploadImage } from '../shared/lib/ima
 import { extractTags } from '../entities/post/model.js';
 import { setToastHandler, refreshOfflineButtons } from '../features/offline-save/index.js';
 import { renderTaleOfDay } from '../widgets/tale-of-day/index.js';
+import { renderFeed } from '../widgets/feed/index.js';
 import { trackView } from '../features/page-view/index.js';
 import { updateBell, initNotifications } from '../widgets/notifications/index.js';
 import { filterPosts } from '../features/search/index.js';
@@ -893,119 +894,25 @@ import { initReports } from '../features/report/index.js';
 
         // Просмотры: один запрос на историю за сессию, и только если колонка уже есть
 function renderPosts() {
-            postsContainer.innerHTML = '';
-            
-            if (posts.length === 0) {
-                postsContainer.innerHTML = `
-                    <div class="empty-feed">
-                        <h3>Здесь пока пусто...</h3>
-                        <p>Стань первым, кто расскажет сказку Шершу!</p>
-                        <button class="btn" onclick="document.getElementById('addPostBtn').click()">Добавить историю</button>
-                    </div>
-                `;
-                return;
-            }
-
-            // не мутируем visibleCount: иначе лента «застревает» на старом числе записей
-            const limit = Math.min(visibleCount, posts.length);
-
-            let shown = 0;
-            posts.slice(0, limit).forEach((post, index) => {
-                // фильтр по активному тегу
-                const activeTag = getActiveTag();
-                if (activeTag && !(post.tags && post.tags.includes(activeTag))) return;
-                // фильтр «только мои истории»
-                if (myOnly && post.author !== userData.name) return;
-                if (myAuthorsOnly && !myAuthors.has(post.author)) return;
-                shown++;
-                const postElement = document.createElement('article');
-                postElement.className = 'post-card';
-                postElement.id = 'post-' + post.id;
-                postElement.dataset.author = post.author || '';
-                postElement.dataset.tags = (post.tags || []).join(' ');
-                postElement.dataset.title = post.title || '';
-                postElement.dataset.text = post.text || '';
-                const dateStr = formatDate(post.date);
-                const commentCount = post.comments ? post.comments.length : 0;
-                
-                const authorData = usersMap[post.author];
-                const avatarSrc = authorData && authorData.avatar ? authorData.avatar : null;
-                const escAuthor = escapeHTML(post.author);
-                const avatarHTML = avatarSrc 
-                    ? `<img src="${avatarSrc}" class="post-avatar" alt="Аватар ${escapeHTML(post.author)}" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>` 
-                    : `<div class="post-avatar" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>👤</div>`;
-
-                const isAuthor = userData.name === post.author && !userData.isGuest;
-                const canDelete = isAuthor || userData.is_admin;
-                const controlsHTML = `
-                    <div class="post-controls">
-                        ${isAuthor ? `<button class="edit-post-btn" onclick="editPost(${post.id})" title="Редактировать" aria-label="Редактировать историю">✏️</button>` : ''}
-                        ${canDelete ? `<button class="delete-post-btn" onclick="deletePost(${post.id})" title="${userData.is_admin && !isAuthor ? 'Удалить (админ)' : 'Удалить'}" aria-label="Удалить историю">🗑️</button>` : ''}
-                    </div>
-                `;
-
-                const imageHTML = post.image ? `<img src="${post.image}" class="post-image" alt="Изображение к истории «${escapeHTML(post.title)}»" loading="lazy" onclick="openImageModal('${post.image}')">` : '';
-                const tagsHTML = (post.tags && post.tags.length)
-                    ? `<div class="post-tags">${post.tags.map(t => `<span class="hint-tag" onclick="filterByTag('${escapeHTML(t)}')">#${escapeHTML(t)}</span>`).join('')}</div>`
-                    : '';
-
-                postElement.innerHTML = `
-                    <div class="post-header-row">
-                        <h2>${escapeHTML(post.title)}</h2>
-                        ${controlsHTML}
-                    </div>                    <div class="post-meta">
-                        ${avatarHTML}
-                        <span>Автор: <a href="#" class="author-name" onclick='openAuthorProfile(&quot;${escapeHTML(post.author)}&quot;)'>${escAuthor}</a></span>
-                        <span>•</span>
-                        <span>${dateStr}</span>
-                        <span>•</span>
-                        <span title="Примерное время чтения">⏱ ${readingTime(post.text)}</span>
-                        ${post.views != null ? `<span>•</span><span title="Просмотры">👁 ${post.views}</span>` : ''}
-                        <button class="action-btn" onclick="copyPostLink(${post.id})" title="Копировать ссылку на пост" aria-label="Копировать ссылку на пост" style="padding:0;font-size:0.85rem;">🔗</button>
-                    </div>
-                    ${imageHTML}
-                    <div class="post-content"><p>${escapeHTML(post.text)}</p></div>
-                    ${tagsHTML}
-                    <div class="post-actions">
-                        <button class="action-btn ${post.isLiked ? 'liked' : ''}" onclick="toggleLike(${index})">
-                            👍 Нравится (<span>${post.likes}</span>)
-                        </button>
-                        <button class="action-btn" onclick="openComments(${index})">
-                            💬 Комментарии (${commentCount})${newCommentsBadge(post, commentCount)}
-                        </button>
-                        <button class="action-btn" onclick="sharePost(${index})" title="Поделиться">
-                            🔗 Поделиться
-                        </button>
-                        <button class="action-btn" onclick="speakPost(${index})" title="${post.audio ? 'Слушать озвучку автора' : 'Слушать сказку'}" aria-label="Слушать сказку">
-                            ${post.audio ? '🎧 Слушать запись' : '🔊 Слушать'}
-                        </button>
-                        <button class="action-btn offline-btn" data-post="${post.id}" onclick="toggleOffline(${post.id})" title="Сохранить сказку для чтения без интернета" aria-label="Сохранить для чтения без интернета">
-                            📥 Офлайн
-                        </button>
-                        ${!userData.isGuest && userData.name ? `<button class="action-btn" onclick="reportPost(${post.id})" title="Пожаловаться" aria-label="Пожаловаться на историю">🚩</button>` : ''}
-                    </div>
-                `;
-                trackView(post);
-                postsContainer.appendChild(postElement);
-            });
-
-            if (visibleCount < posts.length) {
-                const moreBtn = document.createElement('button');
-                moreBtn.className = 'btn';
-                moreBtn.textContent = 'Показать ещё (' + (posts.length - visibleCount) + ')';
-                moreBtn.style.display = 'block';
-                moreBtn.style.margin = '0 auto 20px';
-                moreBtn.onclick = showMorePosts;
-                postsContainer.appendChild(moreBtn);
-            }
-
+    renderFeed(postsContainer, posts, {
+        userData,
+        usersMap,
+        activeTag: getActiveTag(),
+        myOnly,
+        myAuthors: myAuthorsOnly ? myAuthors : null,
+        visibleCount,
+        newCommentsBadge,
+        trackView,
+        onMore: showMorePosts,
+        afterRender: () => {
             // после перерисовки ленты сохраняем активный поиск
             const searchEl = document.getElementById('searchInput');
             if (searchEl && searchEl.value.trim()) filterPosts(true);
-
             refreshOfflineButtons();
             renderTaleOfDay();
         }
+    });
+}
 
 // Подсветка совпадений в заголовке, тексте, авторе и тегах
 // Фильтр по тегу (клик по #тег)
